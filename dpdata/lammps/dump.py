@@ -132,6 +132,42 @@ def safe_get_posi(lines, cell, orig=np.zeros(3), unwrap=False):
         )  # Convert scaled coordinates back to Cartesien coordinates with wraping at periodic boundary conditions
 
 
+def get_spintype(keys):
+    key_sp = ["sp", "spx", "spy", "spz"]
+    key_csp = ["c_spin[1]", "c_spin[2]", "c_spin[3]", "c_spin[4]"]
+    lmp_sp_type = [key_sp, key_csp]
+    for k in range(2):
+        if all(i in keys for i in lmp_sp_type[k]):
+            return lmp_sp_type[k]
+
+
+def safe_get_spin_force(lines):
+    blk, head = _get_block(lines, "ATOMS")
+    keys = head.split()
+    sp_type = get_spintype(keys)
+    assert sp_type is not None, "Dump file does not contain spin!"
+    id_idx = keys.index("id") - 2
+    sp = keys.index(sp_type[0]) - 2
+    spx = keys.index(sp_type[1]) - 2
+    spy = keys.index(sp_type[2]) - 2
+    spz = keys.index(sp_type[3]) - 2
+    sp_force = []
+    for ii in blk:
+        words = ii.split()
+        sp_force.append(
+            [
+                float(words[id_idx]),
+                float(words[sp]),
+                float(words[spx]),
+                float(words[spy]),
+                float(words[spz]),
+            ]
+        )
+    sp_force.sort()
+    sp_force = np.array(sp_force)[:, 1:]
+    return sp_force
+
+
 def get_dumpbox(lines):
     blk, h = _get_block(lines, "BOX BOUNDS")
     bounds = np.zeros([3, 2])

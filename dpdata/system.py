@@ -90,6 +90,7 @@ class System:
         DataType(
             "coords", np.ndarray, (Axis.NFRAMES, Axis.NATOMS, 3), deepmd_name="coord"
         ),
+        DataType("spins", np.ndarray, (Axis.NFRAMES, Axis.NATOMS, 3), required=False, deepmd_name="spin"),
         DataType(
             "real_atom_types", np.ndarray, (Axis.NFRAMES, Axis.NATOMS), required=False
         ),
@@ -707,6 +708,10 @@ class System:
         assert np.linalg.det(trans) != 0
         self.data["cells"][f_idx] = np.matmul(self.data["cells"][f_idx], trans)
         self.data["coords"][f_idx] = np.matmul(self.data["coords"][f_idx], trans)
+        try:
+            self.data["spins"][f_idx] = np.matmul(self.data["spins"][f_idx], trans)
+        except:
+            pass
 
     @post_funcs.register("shift_orig_zero")
     def _shift_orig_zero(self):
@@ -1207,6 +1212,9 @@ class LabeledSystem(System):
             (Axis.NFRAMES, Axis.NATOMS, 3),
             required=False,
             deepmd_name="force",
+        ),
+        DataType(
+            "mag_forces", np.ndarray, (Axis.NFRAMES, Axis.NATOMS, 3), required=False, deepmd_name="force_mag"
         ),
         DataType(
             "virials",
@@ -1796,3 +1804,5 @@ def add_format_methods():
 
 
 add_format_methods()
+
+# %%
