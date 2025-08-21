@@ -41,6 +41,16 @@ def register_spin():
     dpdata.LabeledSystem.register_data_type(dt)
 
 
+    dt = DataType(
+        "hubbard_u",
+        np.ndarray,
+        (Axis.NFRAMES, Axis.NATOMS, 1),
+        required=False,
+        deepmd_name="aparam",
+    )
+    dpdata.System.register_data_type(dt)
+    dpdata.LabeledSystem.register_data_type(dt)
+
 @Format.register("deepmd")
 @Format.register("deepmd/raw")
 class DeePMDRawFormat(Format):

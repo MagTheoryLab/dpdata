@@ -176,7 +176,16 @@ def get_mag_force(outlines):
             magforces.append(magforce)
     return np.array(mags), np.array(magforces)
 
-
+def read_input(path_in):
+    """
+    parse INPUT to dict
+    """
+    input_dict = {}
+    with open_file(path_in)  as f:
+        groups = re.findall(r"^([A-Za-z_]+)\s+([^\#\n]*)", f.read(), re.MULTILINE)
+        for group in groups:
+            input_dict[group[0].strip()] = group[1].strip()
+    return input_dict
 def get_frame(fname):
     data = {
         "atom_names": [],
@@ -232,7 +241,6 @@ def get_frame(fname):
 
     force = get_force(outlines, natoms)
     stress = get_stress(outlines)
-
     data["energies"] = np.array(energy)[np.newaxis]
     data["forces"] = np.empty((0,)) if force is None else force[np.newaxis, :, :]
     data["orig"] = np.zeros(3)
@@ -247,4 +255,11 @@ def get_frame(fname):
         data["force_mags"] = magforce
     if move is not None:
         data["move"] = move
+
+    input_dict = read_input(path_in)
+    if "hubbard_u" in input_dict:
+        hubbard_u = np.array( input_dict["hubbard_u"].split(),dtype=np.float32)
+        hubbard_u = hubbard_u[data["atom_types"]].reshape((-1,1))
+        data["hubbard_u"]=np.array([hubbard_u] )
+
     return data
