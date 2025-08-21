@@ -6,9 +6,10 @@ on:
 
 jobs:
   benchmark:
-    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'deepmodeling' }}
+    runs-on: codspeed-macro
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
