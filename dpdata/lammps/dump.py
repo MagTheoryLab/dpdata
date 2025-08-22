@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 import numpy as np
 
@@ -231,7 +232,29 @@ def load_file(fname: FileType, begin=0, step=1):
                 cc += 1
             if cc >= begin and (cc - begin) % step == 0:
                 buff.append(line)
+def extract_aparam_numbers(inputfile: str) -> List[float]:
 
+    if inputfile is None:
+        return []
+
+    if not os.path.isfile(inputfile):
+        warnings.warn(f"Input file {inputfile} not found.")
+        return []
+
+    with open(inputfile) as f:
+        for line in f.readlines():
+            if "pair_style" not in line:
+                continue
+
+            m = re.search(r'(?i)(?:aparam)\s*([^a-zA-Z]*)', line)
+            if not m:
+                return []
+
+            # 在该片段里全局提取所有合法的整数/小数
+            numbers = re.findall(r'[+-]?\d+(?:\.\d+)?', m.group(1))
+            return [float(n) for n in numbers]
+
+    return None
 
 def get_spin_keys(inputfile):
     """
@@ -336,6 +359,12 @@ def system_data(
     system["cells"] = [np.array(cell)]
     system["atom_types"] = get_atype(lines, type_idx_zero=type_idx_zero)
     system["coords"] = [safe_get_posi(lines, cell, np.array(orig), unwrap)]
+    aparam = np.array(extract_aparam_numbers(input_file),dtype=np.float32)
+    if len(aparam) > 0:
+        print(system["atom_types"])
+        hubbard_u = aparam[system["atom_types"]].reshape((-1, 1))
+        system["hubbard_u"] = [hubbard_u ] *len(array_lines)
+
     spin_keys = get_spin_keys(input_file)
     spin = get_spin(lines, spin_keys)
     has_spin = False
@@ -368,6 +397,10 @@ def system_data(
         system["spins"] = np.array(system["spins"])
     system["cells"] = np.array(system["cells"])
     system["coords"] = np.array(system["coords"])
+    if "hubbard_u" in system:
+        system["hubbard_u"] = np.array(system["hubbard_u"])
+
+    print(system)
     return system
 
 
