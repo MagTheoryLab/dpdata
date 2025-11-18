@@ -10,6 +10,8 @@ def system_info(lines, type_idx_zero=False):
     atom_names = []
     atom_numbs = None
     nelm = None
+    LDAUU=None
+    LDAUJ=None
     for ii in lines:
         ii_word_list = ii.split()
         if "TITEL" in ii:
@@ -31,6 +33,20 @@ def system_info(lines, type_idx_zero=False):
                 atom_numbs = atom_numbs_
             else:
                 assert atom_numbs == atom_numbs_, "in consistent numb atoms in OUTCAR"
+        if "for each species LDAUU =" in ii:
+            pattern = r'LDAUU\s*=\s*([\d\s.]+)'
+            match = re.search(pattern, ii)
+            if match:
+                numbers = match.group(1).split()
+                LDAUU = [float(num) for num in numbers]
+                LDAUJ = [0 for num in numbers]
+        if "for each species LDAUJ =" in ii:
+            pattern = r'LDAUJ\s*=\s*([\d\s.]+)'
+            match = re.search(pattern, ii)
+            if match:
+                numbers = match.group(1).split()
+                LDAUJ = [float(num) for num in numbers]
+
     assert nelm is not None, "cannot find maximum steps for each SC iteration"
     assert atom_numbs is not None, "cannot find ion type info in OUTCAR"
     atom_names = atom_names[: len(atom_numbs)]
@@ -41,7 +57,12 @@ def system_info(lines, type_idx_zero=False):
                 atom_types.append(idx)
             else:
                 atom_types.append(idx + 1)
-    return atom_names, atom_numbs, np.array(atom_types, dtype=int), nelm
+    if LDAUU is not None:
+        u=np.array(LDAUU)-np.array(LDAUJ)
+    else:
+        u=None
+
+    return atom_names, atom_numbs, np.array(atom_types, dtype=int), nelm,u
 
 
 def get_outcar_block(fp, ml=False):
@@ -62,8 +83,9 @@ def get_frames(fname, begin=0, step=1, ml=False, convergence_check=True):
     fp = open(fname)
     blk = get_outcar_block(fp)
 
-    atom_names, atom_numbs, atom_types, nelm = system_info(blk, type_idx_zero=True)
+    atom_names, atom_numbs, atom_types, nelm ,hubbard_u= system_info(blk, type_idx_zero=True)
     ntot = sum(atom_numbs)
+
 
     all_coords = []
     all_spins = []
@@ -72,7 +94,7 @@ def get_frames(fname, begin=0, step=1, ml=False, convergence_check=True):
     all_forces = []
     all_mag_forces = []
     all_virials = []
-
+    all_hubbard_u=[]
     cc = 0
     rec_failed = []
     while len(blk) > 0:
@@ -89,6 +111,8 @@ def get_frames(fname, begin=0, step=1, ml=False, convergence_check=True):
                 all_forces.append(force)
                 if virial is not None:
                     all_virials.append(virial)
+                if hubbard_u is not None:
+                    all_hubbard_u.append([[hubbard_u[i]] for i in atom_types])
             if not is_converge:
                 rec_failed.append(cc + 1)
 
@@ -121,6 +145,10 @@ def get_frames(fname, begin=0, step=1, ml=False, convergence_check=True):
     else:
         all_virials = np.array(all_virials)
     fp.close()
+    if len(all_hubbard_u)==0:
+        all_hubbard_u=None
+    else:
+        all_hubbard_u=np.array(all_hubbard_u)
     return (
         atom_names,
         atom_numbs,
@@ -132,6 +160,7 @@ def get_frames(fname, begin=0, step=1, ml=False, convergence_check=True):
         np.array(all_forces),
         np.array(all_mag_forces),
         all_virials,
+        all_hubbard_u
     )
 
 

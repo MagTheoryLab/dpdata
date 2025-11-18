@@ -7,6 +7,7 @@ import numpy as np
 import dpdata.vasp_deltaspin.outcar
 import dpdata.vasp_deltaspin.poscar
 from dpdata.format import Format
+from dpdata.plugins.abacus import register_mag_data
 from dpdata.utils import uniq_atom_names
 
 
@@ -87,7 +88,9 @@ class VASPOutcarFormat(Format):
             data["energies"],
             data["forces"],
             data["mag_forces"],
+
             tmp_virial,
+            hubbard_u
         ) = dpdata.vasp_deltaspin.outcar.get_frames(
             file_name,
             begin=begin,
@@ -97,6 +100,8 @@ class VASPOutcarFormat(Format):
         )
         if tmp_virial is not None:
             data["virials"] = tmp_virial
+        if hubbard_u is not None:
+            data["hubbard_u"] = hubbard_u
         # scale virial to the unit of eV
         if "virials" in data:
             v_pref = 1 * 1e3 / 1.602176621e6
@@ -104,4 +109,6 @@ class VASPOutcarFormat(Format):
                 vol = np.linalg.det(np.reshape(data["cells"][ii], [3, 3]))
                 data["virials"][ii] *= v_pref * vol
         data = uniq_atom_names(data)
+        register_mag_data(data)
+
         return data
