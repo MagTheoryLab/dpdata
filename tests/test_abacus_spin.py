@@ -206,3 +206,141 @@ class TestABACUSSpin(unittest.TestCase):
         np.testing.assert_almost_equal(mysys.data["spins"][0][1], [0, 0, 3], decimal=8)
         np.testing.assert_almost_equal(mysys.data["spins"][0][2], [3, 0, 0], decimal=8)
         np.testing.assert_almost_equal(mysys.data["spins"][0][3], [0, 5, 0], decimal=8)
+
+
+class TestABACUSRelaxSpinUnconvergedFrame(unittest.TestCase):
+    def setUp(self):
+        self.input_path = "abacus.spin/INPUT"
+        self.log_path = "abacus.spin/OUT.ABACUS/running_relax.log"
+        self.original_log = None
+        shutil.copy("abacus.spin/INPUT.relax", self.input_path)
+
+        with open(self.log_path) as fp:
+            self.original_log = fp.read()
+
+        modified_log = self.original_log.replace(
+            " final etot is -6825.6858753 eV",
+            " convergence has not been achieved @_@",
+            1,
+        )
+        with open(self.log_path, "w") as fp:
+            fp.write(modified_log)
+
+    def tearDown(self):
+        if self.original_log is not None:
+            with open(self.log_path, "w") as fp:
+                fp.write(self.original_log)
+        if os.path.isfile(self.input_path):
+            os.remove(self.input_path)
+
+    def test_relax(self):
+        system = dpdata.LabeledSystem("abacus.spin", fmt="abacus/relax")
+        data = system.data
+
+        self.assertEqual(data["coords"].shape, (2, 2, 3))
+        self.assertEqual(data["spins"].shape, (2, 2, 3))
+        self.assertEqual(data["force_mags"].shape, (2, 2, 3))
+        np.testing.assert_almost_equal(
+            data["energies"], [-6825.60446372, -6825.60469264], decimal=8
+        )
+        np.testing.assert_almost_equal(
+            data["spins"],
+            [
+                [
+                    [1.25007143, 1.25006167, 1.25004587],
+                    [1.25015764, 1.2501678, 1.25018344],
+                ],
+                [
+                    [1.24984994, 1.24977108, 1.24978313],
+                    [1.24996533, 1.2500441, 1.25003208],
+                ],
+            ],
+            decimal=8,
+        )
+        np.testing.assert_almost_equal(
+            data["force_mags"],
+            [
+                [
+                    [-0.16734626, -0.16735378, -0.16735617],
+                    [-0.16836467, -0.16835897, -0.16835625],
+                ],
+                [
+                    [-0.16573406, -0.16574627, -0.1657445],
+                    [-0.16619489, -0.16617948, -0.16618272],
+                ],
+            ],
+            decimal=8,
+        )
+
+
+class TestABACUSMDSpinUnconvergedFrame(unittest.TestCase):
+    def setUp(self):
+        self.input_path = "abacus.spin/INPUT"
+        self.log_path = "abacus.spin/OUT.ABACUS/running_md.log"
+        self.original_log = None
+        shutil.copy("abacus.spin/INPUT.md", self.input_path)
+
+        with open(self.log_path) as fp:
+            self.original_log = fp.read()
+
+        modified_log = self.original_log.replace(
+            " final etot is -6825.6858753 eV",
+            " !! convergence has not been achieved @_@",
+            1,
+        )
+        with open(self.log_path, "w") as fp:
+            fp.write(modified_log)
+
+    def tearDown(self):
+        if self.original_log is not None:
+            with open(self.log_path, "w") as fp:
+                fp.write(self.original_log)
+        if os.path.isfile(self.input_path):
+            os.remove(self.input_path)
+
+    def test_md(self):
+        system = dpdata.LabeledSystem("abacus.spin", fmt="abacus/md")
+        data = system.data
+
+        self.assertEqual(data["coords"].shape, (3, 2, 3))
+        self.assertEqual(data["spins"].shape, (3, 2, 3))
+        self.assertEqual(data["force_mags"].shape, (3, 2, 3))
+        np.testing.assert_almost_equal(
+            data["energies"], [-6825.6043625, -6825.6049361, -6825.6046584], decimal=8
+        )
+        np.testing.assert_almost_equal(
+            data["spins"],
+            [
+                [
+                    [1.2500362, 1.25007501, 1.2500655],
+                    [1.25019078, 1.25015253, 1.25016188],
+                ],
+                [
+                    [1.24985138, 1.24976901, 1.2497695],
+                    [1.24996388, 1.25004618, 1.25004561],
+                ],
+                [
+                    [1.24982513, 1.24985445, 1.24985336],
+                    [1.25005073, 1.25001814, 1.25002065],
+                ],
+            ],
+            decimal=8,
+        )
+        np.testing.assert_almost_equal(
+            data["force_mags"],
+            [
+                [
+                    [-0.16747275, -0.16747145, -0.16746776],
+                    [-0.16853881, -0.16853935, -0.16854119],
+                ],
+                [
+                    [-0.16521817, -0.16523256, -0.16523212],
+                    [-0.16549418, -0.16547867, -0.16547913],
+                ],
+                [
+                    [-0.16141172, -0.16140644, -0.1614127],
+                    [-0.15901519, -0.15905932, -0.15904824],
+                ],
+            ],
+            decimal=8,
+        )

@@ -181,16 +181,35 @@ def get_frame(fname):
     with open_file(os.path.join(path_out, "running_md.log")) as fp:
         outlines = fp.read().split("\n")
     energy = get_energy(outlines, ndump, dump_freq)
+    magmom, magforce = get_mag_force(outlines)
+    if len(magmom) > 0:
+        magmom = magmom[::dump_freq]
+        assert ndump == len(magmom), (
+            "Number of magnetic moments in running_md.log = %d. Number of frames in MD_dump = %d. Please check."  # noqa: UP031
+            % (len(magmom), ndump)
+        )
+    if len(magforce) > 0:
+        magforce = magforce[::dump_freq]
+        assert ndump == len(magforce), (
+            "Number of magnetic forces in running_md.log = %d. Number of frames in MD_dump = %d. Please check."  # noqa: UP031
+            % (len(magforce), ndump)
+        )
 
-    unconv_stru = ""
-    for i, iene in enumerate(energy):
-        if np.isnan(iene):
-            coords = np.delete(coords, i - ndump, axis=0)
-            cells = np.delete(cells, i - ndump, axis=0)
-            force = np.delete(force, i - ndump, axis=0)
-            stress = np.delete(stress, i - ndump, axis=0)
-            energy = np.delete(energy, i - ndump, axis=0)
-            unconv_stru += "%d " % i  # noqa: UP031
+    valid_mask = ~np.isnan(energy)
+    if not np.all(valid_mask):
+        unconv_stru = " ".join(str(i) for i in np.where(~valid_mask)[0]) + " "
+        coords = coords[valid_mask]
+        cells = cells[valid_mask]
+        force = force[valid_mask]
+        stress = stress[valid_mask]
+        energy = energy[valid_mask]
+        if len(magmom) > 0:
+            magmom = magmom[valid_mask]
+        if len(magforce) > 0:
+            magforce = magforce[valid_mask]
+    else:
+        unconv_stru = ""
+
     ndump = len(energy)
     if unconv_stru != "":
         warnings.warn(f"Structure {unconv_stru} are unconverged and not collected!")
@@ -199,8 +218,6 @@ def get_frame(fname):
         stress[iframe] *= np.linalg.det(cells[iframe, :, :].reshape([3, 3]))
     if np.sum(np.abs(stress[0])) < 1e-10:
         stress = None
-
-    magmom, magforce = get_mag_force(outlines)
 
     data["cells"] = cells
     # for idx in range(ndump):

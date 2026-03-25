@@ -38,7 +38,8 @@ def get_coords_from_log(loglines, natoms):
         cell (no output if cell is not changed)
         energy (no output, if SCF is not converged)
         force (no output, if cal_force is not setted or abnormal ending)
-        stress (no output, if set cal_stress is not setted or abnormal ending).
+        stress (no output, if set cal_stress is not setted or abnormal ending)
+        magmom / magforce (no output, if spin is not enabled).
     """
     natoms_log = 0
     for line in loglines:
@@ -103,6 +104,9 @@ def get_coords_from_log(loglines, natoms):
 
     force = collect_force(loglines)
     stress = collect_stress(loglines)
+    magmom, magforce = get_mag_force(loglines)
+    magmom = magmom.tolist()
+    magforce = magforce.tolist()
 
     # delete last structures which has no energy
     while len(energy) < len(coords):
@@ -113,19 +117,25 @@ def get_coords_from_log(loglines, natoms):
     while len(cells) < len(coords):
         cells.append(cells[-1])
 
-    # only keep structures that have all of coord, force and stress
-    if len(stress) == 0 and len(force) == 0:
-        minl = len(coords)
-    elif len(stress) == 0:
-        minl = min(len(coords), len(force))
+    frame_lengths = [len(coords)]
+    if len(force) > 0:
+        frame_lengths.append(len(force))
+    if len(stress) > 0:
+        frame_lengths.append(len(stress))
+    if len(magmom) > 0:
+        frame_lengths.append(len(magmom))
+    if len(magforce) > 0:
+        frame_lengths.append(len(magforce))
+    minl = min(frame_lengths)
+
+    if len(force) > 0:
         force = force[:minl]
-    elif len(force) == 0:
-        minl = min(len(coords), len(stress))
+    if len(stress) > 0:
         stress = stress[:minl]
-    else:
-        minl = min(len(coords), len(force), len(stress))
-        force = force[:minl]
-        stress = stress[:minl]
+    if len(magmom) > 0:
+        magmom = magmom[:minl]
+    if len(magforce) > 0:
+        magforce = magforce[:minl]
 
     coords = coords[:minl]
     energy = energy[:minl]
@@ -142,12 +152,18 @@ def get_coords_from_log(loglines, natoms):
                 del force[i - minl]
             if len(stress) > 0:
                 del stress[i - minl]
+            if len(magmom) > 0:
+                del magmom[i - minl]
+            if len(magforce) > 0:
+                del magforce[i - minl]
 
     energy = np.array(energy)
     cells = np.array(cells)
     coords = np.array(coords)
     stress = np.array(stress)
     force = np.array(force)
+    magmom = np.array(magmom)
+    magforce = np.array(magforce)
 
     # transfer direct coordinate to cartessian type
     for i in range(len(coords)):
@@ -166,7 +182,7 @@ def get_coords_from_log(loglines, natoms):
     else:
         virial = None
 
-    return energy, cells, coords, force, stress, virial
+    return energy, cells, coords, force, stress, virial, magmom, magforce
 
 
 def get_frame(fname):
@@ -191,9 +207,16 @@ def get_frame(fname):
     with open_file(logf) as f1:
         lines = f1.readlines()
 
-    energy, cells, coords, force, stress, virial = get_coords_from_log(lines, natoms)
-
-    magmom, magforce = get_mag_force(lines)
+    (
+        energy,
+        cells,
+        coords,
+        force,
+        stress,
+        virial,
+        magmom,
+        magforce,
+    ) = get_coords_from_log(lines, natoms)
 
     data["cells"] = cells
     data["coords"] = coords
