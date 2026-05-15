@@ -129,14 +129,14 @@ def get_posi(lines):
 
 def get_spins(lines):
     atom_lines = get_atoms(lines)
-    if len(atom_lines[0].split()) < 8:
+    if len(atom_lines[0].split()) < 9:
         return None
     spins_ori = []
     spins_norm = []
     for ii in atom_lines:
         iis = ii.split()
         spins_ori.append([float(jj) for jj in iis[5:8]])
-        spins_norm.append([float(iis[-1])])
+        spins_norm.append([float(iis[8])])
     return np.array(spins_ori) * np.array(spins_norm)
 
 
