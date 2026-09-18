@@ -8,6 +8,7 @@ import warnings
 import numpy as np
 
 import dpdata
+from dpdata.data_type import is_fully_known_shape
 from dpdata.utils import open_file
 
 from .raw import load_type
@@ -84,15 +85,19 @@ def to_system_data(folder, type_map=None, labels=True):
         for ii in sets:
             tmp = _cond_load_data(os.path.join(ii, dtype.deepmd_name + ".npy"))
             if tmp is not None:
-                expected = int(tmp.shape[0]) * int(np.prod(shape, dtype=np.int64))
-                if tmp.size != expected:
-                    # Several data types may share one deepmd_name (for example a
-                    # generic ``aparam`` next to the ``hubbard_u`` alias). Only
-                    # the data type whose shape matches the stored array owns it.
-                    warnings.warn(
-                        f"Size of {dtype.deepmd_name}.npy is {tmp.size}, which does not match the shape of data type {dtype.name} ({dtype.shape}). This file is not loaded as {dtype.name}."
+                if is_fully_known_shape(shape):
+                    expected = int(tmp.shape[0]) * int(
+                        np.prod(shape, dtype=np.int64)
                     )
-                    continue
+                    if tmp.size != expected:
+                        # Several data types may share one deepmd_name (for
+                        # example a generic ``aparam`` next to the
+                        # ``hubbard_u`` alias). Only the data type whose shape
+                        # matches the stored array owns it.
+                        warnings.warn(
+                            f"Size of {dtype.deepmd_name}.npy is {tmp.size}, which does not match the shape of data type {dtype.name} ({dtype.shape}). This file is not loaded as {dtype.name}."
+                        )
+                        continue
                 all_data.append(np.reshape(tmp, [tmp.shape[0], *shape]))
         if len(all_data) > 0:
             data[dtype.name] = np.concatenate(all_data, axis=0)

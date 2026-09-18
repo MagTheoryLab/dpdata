@@ -6,6 +6,7 @@ import warnings
 import numpy as np
 
 import dpdata
+from dpdata.data_type import is_fully_known_shape
 from dpdata.utils import open_file
 
 
@@ -83,7 +84,9 @@ def to_system_data(folder, type_map=None, labels=True):
             raw_file = os.path.join(folder, f"{dtype.deepmd_name}.raw")
             if os.path.exists(raw_file):
                 tmp = np.loadtxt(raw_file)
-                if np.size(tmp) != nframes * int(np.prod(shape, dtype=np.int64)):
+                if is_fully_known_shape(shape) and np.size(tmp) != nframes * int(
+                    np.prod(shape, dtype=np.int64)
+                ):
                     # Several data types may share one deepmd_name (for example a
                     # generic ``aparam`` next to the ``hubbard_u`` alias). Only
                     # the data type whose shape matches the stored file owns it.

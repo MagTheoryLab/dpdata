@@ -1,11 +1,23 @@
 from __future__ import annotations
 
+import numbers
 from enum import Enum, unique
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 from dpdata.plugin import Plugin
+
+
+def is_fully_known_shape(shape) -> bool:
+    """Return whether every dimension of a resolved shape is a positive integer.
+
+    A data type may leave a dimension free (``-1``) or wildcarded (``Axis``),
+    so a stored array cannot be checked against its declared size. The deepmd
+    readers use this test before they decide whether a file that several data
+    types share actually belongs to the data type they are looking at.
+    """
+    return all(isinstance(dim, numbers.Integral) and dim > 0 for dim in shape)
 
 if TYPE_CHECKING:
     from dpdata.system import System

@@ -14,7 +14,7 @@ import dpdata.formats.deepmd.raw
 from dpdata.data_type import Axis, DataType
 from dpdata.driver import Driver
 from dpdata.format import Format
-from dpdata.plugins.mag_data import register_mag_data
+from dpdata.plugins.mag_data import register_hubbard_u_if_stored, register_mag_data
 
 if TYPE_CHECKING:
     import h5py
@@ -23,6 +23,12 @@ if TYPE_CHECKING:
 def register_spin():
     """Register the magnetic data types stored in a DeePMD data set."""
     register_mag_data()
+
+
+def register_stored_mag_data(file_name):
+    """Register the magnetic data types that a DeePMD data set stores."""
+    register_spin()
+    register_hubbard_u_if_stored(file_name)
 
 @Format.register("deepmd")
 @Format.register("deepmd/raw")
@@ -55,7 +61,7 @@ class DeePMDRawFormat(Format):
         dict
             Unlabeled system data.
         """
-        register_spin()
+        register_stored_mag_data(file_name)
         return dpdata.formats.deepmd.raw.to_system_data(
             file_name, type_map=type_map, labels=False
         )
@@ -91,7 +97,7 @@ class DeePMDRawFormat(Format):
         dict
             Labeled system data with all available registered fields.
         """
-        register_spin()
+        register_stored_mag_data(file_name)
         return dpdata.formats.deepmd.raw.to_system_data(
             file_name, type_map=type_map, labels=True
         )
@@ -129,7 +135,7 @@ class DeePMDCompFormat(Format):
         dict
             Unlabeled system data.
         """
-        register_spin()
+        register_stored_mag_data(file_name)
         return dpdata.formats.deepmd.comp.to_system_data(
             file_name, type_map=type_map, labels=False
         )
@@ -176,7 +182,7 @@ class DeePMDCompFormat(Format):
         dict
             Labeled system data with all available registered fields.
         """
-        register_spin()
+        register_stored_mag_data(file_name)
         return dpdata.formats.deepmd.comp.to_system_data(
             file_name, type_map=type_map, labels=True
         )
