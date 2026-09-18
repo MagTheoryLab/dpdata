@@ -242,7 +242,15 @@ def check_outputs(coord, cell, force):
 
 
 # we assume that the force is printed ...
-def get_frames(fname, begin=0, step=1, ml=False, convergence_check=True):
+def get_frames(
+    fname, begin=0, step=1, ml=False, convergence_check=True, block_observer=None
+):
+    """Read the labeled ionic steps of an OUTCAR.
+
+    ``block_observer`` is called as ``block_observer(step_index, block)`` for
+    every ionic step that is collected, which lets an extension read extra
+    per-step data that shares the frame filtering of this reader.
+    """
     with open(fname) as fp:
         return _get_frames_lower(
             fp,
@@ -251,10 +259,13 @@ def get_frames(fname, begin=0, step=1, ml=False, convergence_check=True):
             step=step,
             ml=ml,
             convergence_check=convergence_check,
+            block_observer=block_observer,
         )
 
 
-def _get_frames_lower(fp, fname, begin=0, step=1, ml=False, convergence_check=True):
+def _get_frames_lower(
+    fp, fname, begin=0, step=1, ml=False, convergence_check=True, block_observer=None
+):
     # Split on the same token as every later block. An ML_ISTART=2 run writes
     # only "free  energy ML TOTEN", so asking for the ab initio token here
     # swallowed the whole file into one block and yielded a single frame.
@@ -316,6 +327,8 @@ def _get_frames_lower(fp, fname, begin=0, step=1, ml=False, convergence_check=Tr
                 all_forces.append(force)
                 if virial is not None:
                     all_virials.append(virial)
+                if block_observer is not None:
+                    block_observer(cc, blk)
             if not is_converge:
                 rec_failed.append(cc + 1)
 

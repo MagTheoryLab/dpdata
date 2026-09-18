@@ -1,0 +1,96 @@
+ vasp.6.6.0 06Mar2026 (build Sep 16 2026 14:13:30) complex                       
+ executed on              LinuxNV date 2026.09.16  14:40:05
+
+ POTCAR:    PAW_PBE Fe 06Sep2000                  
+ POTCAR:    PAW_PBE Fe 06Sep2000                  
+
+   ions per type =               2
+
+   NELM   =    400;   NELMIN=  3;   NELMDL= -1     # of ELM steps 
+
+ DeltaSpin constraint setup
+   Moment definition : DEF0 - PAW projector moment (LORBIT=11)
+   Constrained atoms : 2 / 2
+   Required dM(max)  : <=  1.000E-06 uB
+   dM(max): maximum constrained-component error after full-space solve.
+   A dash means no full-space constraint measurement is available yet.
+   Local moments are not the total cell moment.
+
+--------------------------------------- Ionic step        1  -------------------------------------------
+
+------------------------ aborting loop because EDIFF is reached ----------------------------------------
+
+
+
+ DeltaSpin final status
+ SCF convergence        : reached
+ Moment constraint      : reached
+ Maximum moment error   :   1.0225E-07 uB
+ Requested tolerance    :   1.0000E-06 uB
+
+ DeltaSpin final constrained observables
+ DELTASPIN_MOMENT_DEF = 0
+ VASP PROCAR LORBIT=11 Projector Spin Moment (uB)
+ Moments below list constrained atoms; omitted atoms may have induced moments.
+ cx/cy/cz: 1 = constrained, 0 = unconstrained
+   ion elem cx cy cz                Mx                My                Mz               |M|
+--------------------------------------------------------------------------------------------
+     1   Fe  1  1  1      0.3500000138     -0.0000000001      2.6770001023      2.6997832426
+     2   Fe  1  1  1     -0.3500000098      0.0000000000      2.6770000828      2.6997832229
+
+ Magnetic force (eV/uB)
+ Unconstrained components have lambda = 0.
+   ion elem cx cy cz               MFx               MFy               MFz
+--------------------------------------------------------------------------
+     1   Fe  1  1  1      0.0072761923      0.0000003343      0.0518581897
+     2   Fe  1  1  1     -0.0072805932      0.0000003982      0.0518628325
+ magnetic force = spin_lambda for L=E+lambda.(M-M_target)
+
+
+
+  FORCE on cell =-STRESS in cart. coord.  units (eV):
+  Direction    XX          YY          ZZ          XY          YZ          ZX
+  --------------------------------------------------------------------------------------
+  Alpha Z   116.94426   116.94426   116.94426
+  Ewald    -389.53220  -389.53166  -389.53053    -0.00079    -0.00034     0.00040
+  Hartree    65.37114    65.37232    64.44172    -0.00068    -0.00035    -0.00033
+  E(xc)     -79.50141   -79.50154   -79.18994     0.00007     0.00003     0.00006
+  Local     114.48280   114.47940   117.24129     0.00203     0.00100     0.00066
+  n-local   -49.38351   -49.38325   -48.28723     0.00043     0.00016     0.00020
+  augment    78.19445    78.19539    76.78590    -0.00035    -0.00016    -0.00031
+  Kinetic   145.67901   145.68071   142.50409     0.00010     0.00017    -0.00018
+  Fock        0.00000     0.00000     0.00000     0.00000     0.00000     0.00000
+  -------------------------------------------------------------------------------------
+  Total       2.25453     2.25564     0.90956     0.00081     0.00051     0.00048
+  in kB     152.79948   152.87410    61.64459     0.05518     0.03471     0.03282
+
+ VOLUME and BASIS-vectors are now :
+ -----------------------------------------------------------------------------
+  energy-cutoff  :      400.00
+  volume of cell :       23.64
+      direct lattice vectors                 reciprocal lattice vectors
+     2.870000000  0.000000000  0.000000000     0.348432056  0.000000000  0.000000000
+     0.000000000  2.870000000  0.000000000     0.000000000  0.348432056  0.000000000
+     0.000000000  0.000000000  2.870000000     0.000000000  0.000000000  0.348432056
+
+  length of vectors
+     2.870000000  2.870000000  2.870000000     0.348432056  0.348432056  0.348432056
+
+
+
+ POSITION                                       TOTAL-FORCE (eV/Angst)
+ -----------------------------------------------------------------------------------
+      0.00000      0.00000      0.00000         0.018706     -0.016027     -0.005289
+      1.43701      1.43328      1.43586        -0.018706      0.016027      0.005289
+ -----------------------------------------------------------------------------------
+    total drift:                                0.000001     -0.000001     -0.000001
+
+
+
+
+  FREE ENERGIE OF THE ION-ELECTRON SYSTEM (eV)
+  ---------------------------------------------------
+  free  energy   TOTEN  =       -14.38633426 eV
+
+  energy  without entropy=      -14.35854084  energy(sigma->0) =      -14.37243755
+ DeltaSpin high precision TOTEN =   -1.43863342561465206E+01 eV

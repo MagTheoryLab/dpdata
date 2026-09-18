@@ -740,10 +740,13 @@ class System:
         assert np.linalg.det(trans) != 0
         self.data["cells"][f_idx] = np.matmul(self.data["cells"][f_idx], trans)
         self.data["coords"][f_idx] = np.matmul(self.data["coords"][f_idx], trans)
-        try:
-            self.data["spins"][f_idx] = np.matmul(self.data["spins"][f_idx], trans)
-        except:
-            pass
+        # Magnetic moments and magnetic forces are vectors in the same frame
+        # as the coordinates, so they follow the same rotation.
+        for key in ("spins", "force_mags"):
+            try:
+                self.data[key][f_idx] = np.matmul(self.data[key][f_idx], trans)
+            except (KeyError, IndexError, TypeError, ValueError):
+                pass
 
     @post_funcs.register("shift_orig_zero")
     def _shift_orig_zero(self):
