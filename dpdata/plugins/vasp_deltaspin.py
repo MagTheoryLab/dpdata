@@ -14,8 +14,31 @@ from dpdata.utils import uniq_atom_names
 @Format.register("vasp_deltaspin/poscar")
 @Format.register("vasp_deltaspin/contcar")
 class VASPPoscarFormat(Format):
+    """VASP POSCAR or CONTCAR structure file with DeltaSpin constraints.
+
+    The DeltaSpin variant of VASP stores the initial magnetic moments in
+    ``MAGMOM`` and the constrained moments in ``M_CONSTR`` inside the INCAR
+    next to the structure. Reading therefore needs the INCAR that belongs to
+    the POSCAR/CONTCAR, and writing updates both files.
+    """
+
     @Format.post("rot_lower_triangular")
     def from_system(self, file_name, **kwargs):
+        """Load a VASP POSCAR or CONTCAR file.
+
+        Parameters
+        ----------
+        file_name : str
+            POSCAR/CONTCAR input; the matching INCAR is read from the same
+            directory.
+        **kwargs : dict
+            Additional format arguments accepted for API compatibility.
+
+        Returns
+        -------
+        dict
+            System data, including the magnetic moments read from the INCAR.
+        """
         with open(file_name) as fp:
             lines = [line.rstrip("\n") for line in fp]
         with open(file_name[:-6] + "INCAR") as fp:
@@ -53,6 +76,13 @@ class VASPPoscarFormat(Format):
 
 @Format.register("vasp/string")
 class VASPStringFormat(Format):
+    """In-memory VASP POSCAR text representation with DeltaSpin constraints.
+
+    This write-only helper returns the POSCAR content and the matching
+    ``MAGMOM``/``M_CONSTR`` INCAR lines as strings instead of writing them to
+    files.
+    """
+
     def to_system(self, data, frame_idx=0, **kwargs):
         """Dump the system in vasp POSCAR format string.
 
@@ -72,10 +102,40 @@ class VASPStringFormat(Format):
 # rotate the system to lammps convention
 @Format.register("vasp_deltaspin/outcar")
 class VASPOutcarFormat(Format):
+    """VASP OUTCAR labeled trajectory of a DeltaSpin constraint calculation.
+
+    The reader extracts ionic-step cells, coordinates, energies, forces, and
+    virials from the OUTCAR, and the constrained magnetic moments and magnetic
+    forces that the DeltaSpin build prints into the OSZICAR.
+    """
+
     @Format.post("rot_lower_triangular")
     def from_labeled_system(
         self, file_name, begin=0, step=1, convergence_check=True, **kwargs
     ):
+        """Load labeled ionic steps from a DeltaSpin VASP OUTCAR.
+
+        Parameters
+        ----------
+        file_name : str
+            VASP ``OUTCAR`` file; the sibling ``OSZICAR`` holds the constrained
+            magnetic moments and magnetic forces.
+        begin : int, default=0
+            Index of the first ionic step to load.
+        step : int, default=1
+            Load every ``step``-th ionic step.
+        convergence_check : bool, default=True
+            Exclude unconverged electronic steps when enabled.
+        **kwargs : dict
+            Additional options. ``ml=True`` reads labels from VASP's machine-
+            learning force-field output blocks.
+
+        Returns
+        -------
+        dict
+            System data, including ``spins``, ``force_mags``, and
+            ``hubbard_u`` when the calculation provides them.
+        """
         data = {}
         ml = kwargs.get("ml", False)
         (
@@ -87,7 +147,7 @@ class VASPOutcarFormat(Format):
             data["spins"],
             data["energies"],
             data["forces"],
-            data["mag_forces"],
+            data["force_mags"],
 
             tmp_virial,
             hubbard_u

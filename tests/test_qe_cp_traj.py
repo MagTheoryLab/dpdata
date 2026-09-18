@@ -5,6 +5,8 @@ import unittest
 import numpy as np
 from context import dpdata
 
+from dpdata.formats.qe.traj import convert_celldm, load_cell_parameters
+
 bohr2ang = dpdata.unit.LengthConversion("bohr", "angstrom").value()
 
 
@@ -59,13 +61,124 @@ class TestCPTRAJLabeledTraj(unittest.TestCase, TestCPTRAJProps):
         self.system = dpdata.LabeledSystem("qe.traj/oh-md", fmt="qe/cp/traj")
 
 
+class TestCPTRAJInputCellUnits(unittest.TestCase):
+    def test_angstrom_cell_without_cel_trajectory(self):
+        # Earlier tests did not expose this regression: the only missing-.cel
+        # fixture used ibrav/celldm, whose cell is correctly expressed in Bohr.
+        # Exercise the distinct fallback path where CELL_PARAMETERS already
+        # stores angstrom values and therefore must not be converted again.
+        system = dpdata.System(
+            "qe.traj/angstrom_no_cel/cp",
+            fmt="qe/cp/traj",
+        )
+
+        np.testing.assert_allclose(
+            system["cells"][0],
+            np.eye(3) * 19.7299995422,
+        )
+
+    def test_bohr_cell_without_cel_trajectory(self):
+        system = dpdata.System(
+            "qe.traj/bohr_no_cel/cp",
+            fmt="qe/cp/traj",
+        )
+
+        np.testing.assert_allclose(
+            system["cells"][0],
+            np.eye(3) * 2.0 * bohr2ang,
+        )
+
+    def test_alat_cell_without_cel_trajectory(self):
+        system = dpdata.System(
+            "qe.traj/alat_no_cel/cp",
+            fmt="qe/cp/traj",
+        )
+
+        np.testing.assert_allclose(
+            system["cells"][0],
+            np.eye(3) * 10.0 * bohr2ang,
+        )
+
+    def test_omitted_unit_uses_a_lattice_parameter(self):
+        system = dpdata.System(
+            "qe.traj/a_no_cel/cp",
+            fmt="qe/cp/traj",
+        )
+        np.testing.assert_allclose(system["cells"][0], np.eye(3) * 5.5)
+
+    def test_alat_without_lattice_parameter_raises(self):
+        with self.assertRaisesRegex(ValueError, "requires celldm\\(1\\) or A"):
+            load_cell_parameters(["CELL_PARAMETERS {alat}", "1 0 0", "0 1 0", "0 0 1"])
+
+    def test_omitted_unit_without_lattice_parameter_raises(self):
+        with self.assertRaisesRegex(ValueError, "without a unit requires"):
+            load_cell_parameters(["CELL_PARAMETERS", "1 0 0", "0 1 0", "0 0 1"])
+
+    def test_unsupported_cell_unit_raises(self):
+        with self.assertRaisesRegex(ValueError, "unsupported CELL_PARAMETERS unit"):
+            load_cell_parameters(
+                ["CELL_PARAMETERS {crystal}", "1 0 0", "0 1 0", "0 0 1"]
+            )
+
+    def test_ambiguous_cell_unit_raises(self):
+        with self.assertRaisesRegex(ValueError, "ambiguous CELL_PARAMETERS unit"):
+            load_cell_parameters(
+                ["CELL_PARAMETERS {alat} bohr", "1 0 0", "0 1 0", "0 0 1"],
+                lattice_parameter=5.0,
+            )
+
+    def test_missing_cell_parameters_for_ibrav_zero_raises(self):
+        with self.assertRaisesRegex(
+            ValueError, "CELL_PARAMETERS is required when ibrav is 0"
+        ):
+            dpdata.System(
+                "qe.traj/missing_cell_no_cel/cp",
+                fmt="qe/cp/traj",
+            )
+
+
 class TestConverCellDim(unittest.TestCase):
     def test_case_null(self):
-        cell = dpdata.qe.traj.convert_celldm(8, [1, 1, 1])
+        cell = convert_celldm(8, [1, 1, 1])
         ref = np.eye(3)
         for ii in range(3):
             for jj in range(3):
                 self.assertAlmostEqual(cell[ii][jj], ref[ii][jj])
+
+
+class TestVirial(unittest.TestCase):
+    def test(self):
+        self.system = dpdata.LabeledSystem("qe.traj/si/si", fmt="qe/cp/traj")
+        self.assertEqual(self.system["virials"].shape, (2, 3, 3))
+        np.testing.assert_almost_equal(
+            self.system["virials"][0],
+            np.array(
+                [
+                    [0.31120718, -0.03261485, -0.02537362],
+                    [-0.03261485, 0.3100397, 0.04211053],
+                    [-0.02537362, 0.04211057, 0.30571264],
+                ]
+            ),
+        )
+        np.testing.assert_almost_equal(
+            self.system["virials"][1],
+            np.array(
+                [
+                    [0.31072979, -0.03151186, -0.02302297],
+                    [-0.03151186, 0.30951293, 0.04078447],
+                    [-0.02302297, 0.04078451, 0.30544987],
+                ]
+            ),
+        )
+
+    def test_raise(self):
+        with self.assertRaises(RuntimeError) as c:
+            self.system = dpdata.LabeledSystem(
+                "qe.traj/si.wrongstr/si", fmt="qe/cp/traj"
+            )
+        self.assertTrue(
+            "the step key between files are not consistent." in str(c.exception)
+        )
 
 
 if __name__ == "__main__":

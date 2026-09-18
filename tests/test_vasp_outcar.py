@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import io
+import os
+import shutil
+import tempfile
 import unittest
+import warnings
 
 import numpy as np
 from comp_sys import CompLabeledSys, IsPBC
 from context import dpdata
 
+from dpdata.formats.vasp.outcar import _get_frames_lower
 from dpdata.utils import uniq_atom_names
 
 
@@ -19,6 +25,83 @@ class TestVaspOUTCAR(unittest.TestCase, CompLabeledSys, IsPBC):
         self.e_places = 6
         self.f_places = 6
         self.v_places = 4
+
+
+class TestVaspOUTCARIncompleteForceTable(unittest.TestCase):
+    """Regression tests for force tables cut short before all atom rows."""
+
+    @staticmethod
+    def _block(force_rows, *, include_header=False, energy=-1.0):
+        lines = []
+        if include_header:
+            lines.extend(
+                [
+                    " TITEL  = PAW_PBE H 15Jun2001",
+                    " NELM = 60; maximum number of electronic SC steps",
+                    " ions per type = 2",
+                ]
+            )
+        lines.extend(
+            [
+                " VOLUME and BASIS-vectors are now :",
+                " filler",
+                " filler",
+                " filler",
+                " filler",
+                " 1.0 0.0 0.0",
+                " 0.0 1.0 0.0",
+                " 0.0 0.0 1.0",
+                " POSITION                                       TOTAL-FORCE (eV/Angst)",
+                " -----------------------------------------------------------------------------------",
+                *force_rows,
+                f" free  energy   TOTEN  =       {energy:.6f} eV",
+            ]
+        )
+        return "\n".join(lines) + "\n"
+
+    def test_non_numeric_record_before_all_atoms_skips_incomplete_frame(self):
+        # The first frame is valid, but the second table reaches its energy
+        # record after only one of the two expected atoms. Older tests used
+        # complete tables, so converting that non-numeric record was never
+        # exercised.
+        valid_rows = ["0 0 0 1 2 3", "1 1 1 4 5 6"]
+        incomplete_rows = ["2 2 2 7 8 9"]
+        contents = self._block(valid_rows, include_header=True) + self._block(
+            incomplete_rows, energy=-2.0
+        )
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            frames = _get_frames_lower(io.StringIO(contents), "OUTCAR")
+
+        self.assertEqual(frames[3].shape, (1, 3, 3))
+        self.assertEqual(frames[4].shape, (1, 2, 3))
+        self.assertEqual(frames[6].shape, (1, 2, 3))
+        self.assertTrue(
+            any("incomplete labels in frame 2" in str(item.message) for item in caught)
+        )
+
+    def test_truncated_table_does_not_index_past_block(self):
+        # A file truncated immediately after its first atom previously raised
+        # IndexError while the parser blindly indexed all ``ntot`` rows.
+        valid_rows = ["0 0 0 1 2 3", "1 1 1 4 5 6"]
+        truncated_block = "\n".join(
+            [
+                " POSITION                                       TOTAL-FORCE (eV/Angst)",
+                " -----------------------------------------------------------------------------------",
+                "0 0 0 1 2 3",
+            ]
+        )
+        contents = self._block(valid_rows, include_header=True) + truncated_block
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            frames = _get_frames_lower(io.StringIO(contents), "OUTCAR")
+
+        self.assertEqual(frames[4].shape, (1, 2, 3))
+        self.assertTrue(
+            any("expected 2 atom rows, found 1" in str(item.message) for item in caught)
+        )
 
 
 class TestVaspOUTCARTypeMap(unittest.TestCase, CompLabeledSys, IsPBC):
@@ -120,6 +203,52 @@ class TestVaspOUTCARNWRITE0(unittest.TestCase):
         # only the first and last frames that have forces are read
         ss = dpdata.LabeledSystem("poscars/Ti-aimd-nwrite0/OUTCAR")
         self.assertEqual(ss.get_nframes(), 2)
+
+
+class TestVaspOUTCARMultiSystems(unittest.TestCase):
+    def test_loads_outcars_recursively_from_nested_directories(self):
+        """The CLI ``-m`` path must discover OUTCAR files, not parse directories."""
+
+        def nonzero_composition(system):
+            """Normalize away MultiSystems' shared zero-count type entries."""
+            return frozenset(
+                (name, count)
+                for name, count in zip(
+                    system["atom_names"], system["atom_numbs"], strict=True
+                )
+                if count
+            )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            calculation_dirs = [
+                os.path.join(tmpdir, "Bond_calc", "calculation-000"),
+                os.path.join(tmpdir, "heating", "temperature-300", "calculation-000"),
+            ]
+            source_outcars = [
+                os.path.join("poscars", "OUTCAR.Ge.vdw"),
+                os.path.join("poscars", "Ti-O-Ti-v6", "OUTCAR"),
+            ]
+            expected_compositions = {
+                nonzero_composition(dpdata.LabeledSystem(source, fmt="vasp/outcar"))
+                for source in source_outcars
+            }
+            for calculation_dir, source_outcar in zip(
+                calculation_dirs, source_outcars, strict=True
+            ):
+                os.makedirs(calculation_dir)
+                shutil.copy(source_outcar, os.path.join(calculation_dir, "OUTCAR"))
+
+            systems = dpdata.MultiSystems.from_file(tmpdir, fmt="vasp/outcar")
+
+        self.assertEqual(len(systems), 2)
+        self.assertEqual(systems.get_nframes(), 2)
+        self.assertEqual({system.get_nframes() for system in systems}, {1})
+        # MultiSystems aligns type maps and element order across systems, so
+        # compare the non-zero compositions rather than display formulas.
+        self.assertEqual(
+            {nonzero_composition(system) for system in systems},
+            expected_compositions,
+        )
 
 
 class TestVaspAtomNamesV6(unittest.TestCase):

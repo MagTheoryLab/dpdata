@@ -10,7 +10,6 @@ from copy import deepcopy
 from typing import (
     TYPE_CHECKING,
     Any,
-    Iterable,
     Literal,
     overload,
 )
@@ -23,10 +22,10 @@ import dpdata.md.pbc
 # ensure all plugins are loaded!
 import dpdata.plugins
 import dpdata.plugins.deepmd
-from dpdata.amber.mask import load_param_file, pick_by_amber_mask
 from dpdata.data_type import Axis, DataError, DataType, get_data_types
 from dpdata.driver import Driver, Minimizer
 from dpdata.format import Format
+from dpdata.formats.amber.mask import load_param_file, pick_by_amber_mask
 from dpdata.plugin import Plugin
 from dpdata.utils import (
     add_atom_names,
@@ -37,6 +36,8 @@ from dpdata.utils import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     import parmed
 
 
@@ -90,7 +91,9 @@ class System:
         DataType(
             "coords", np.ndarray, (Axis.NFRAMES, Axis.NATOMS, 3), deepmd_name="coord"
         ),
-        DataType("spins", np.ndarray, (Axis.NFRAMES, Axis.NATOMS, 3), required=False, deepmd_name="spin"),
+        DataType(
+            "spins", np.ndarray, (Axis.NFRAMES, Axis.NATOMS, 3), required=False, deepmd_name="spin"
+        ),
         DataType(
             "real_atom_types", np.ndarray, (Axis.NFRAMES, Axis.NATOMS), required=False
         ),
@@ -123,6 +126,7 @@ class System:
                 - ``lammps/dump``: Lammps dump
                 - ``deepmd/raw``: deepmd-kit raw
                 - ``deepmd/npy``: deepmd-kit compressed format (numpy binary)
+                - ``deepmd/npy/mixed``: deepmd-kit mixed type compressed format (numpy binary)
                 - ``vasp/poscar``: vasp POSCAR
                 - ``vasp/contcar``: vasp contcar
                 - ``vasp/string``: vasp string
@@ -164,6 +168,7 @@ class System:
                 - ``gaussian/gjf``: gaussian gjf
                 - ``deepmd/comp``: deepmd comp
                 - ``deepmd/hdf5``: deepmd hdf5
+                - ``deepmd/hdf5/mixed``: deepmd mixed type hdf5
                 - ``gromacs/gro``: gromacs gro
                 - ``cp2k/aimd_output``: cp2k aimd_output
                 - ``cp2k/output``: cp2k output
@@ -330,10 +335,13 @@ class System:
         return self.__class__.from_dict({"data": self_copy.data})
 
     def dump(self, filename: str, indent: int = 4):
-        """Dump .json or .yaml file."""
-        from monty.serialization import dumpfn
+        """Dump a JSON, YAML, or MessagePack file."""
+        from dpdata.serialization import _detect_format, dumpfn
 
-        dumpfn(self.as_dict(), filename, indent=indent)
+        if _detect_format(filename) == "mpk":
+            dumpfn(self.as_dict(), filename)
+        else:
+            dumpfn(self.as_dict(), filename, indent=indent)
 
     def map_atom_types(
         self, type_map: dict[str, int] | list[str] | None = None
@@ -368,29 +376,27 @@ class System:
         _set2 = set(list(type_map.keys()))
         assert _set1.issubset(_set2)
 
-        atom_types_list = []
-        for name, numb in zip(self.get_atom_names(), self.get_atom_numbs()):
-            atom_types_list.extend([name] * numb)
-        new_atom_types = np.array([type_map[ii] for ii in atom_types_list], dtype=int)
+        atom_names = self.get_atom_names()
+        new_atom_types = np.array(
+            [type_map[atom_names[ii]] for ii in self.data["atom_types"]], dtype=int
+        )
 
         return new_atom_types
 
     @staticmethod
     def load(filename: str):
-        """Rebuild System obj. from .json or .yaml file."""
-        from monty.serialization import loadfn
+        """Rebuild a System object from a JSON, YAML, or MessagePack file."""
+        from dpdata.serialization import loadfn
 
         return loadfn(filename)
 
     @classmethod
     def from_dict(cls, data: dict):
         """Construct a System instance from a data dict."""
-        from monty.serialization import MontyDecoder  # type: ignore
+        from dpdata.serialization import process_decoded
 
         decoded = {
-            k: MontyDecoder().process_decoded(v)
-            for k, v in data.items()
-            if not k.startswith("@")
+            k: process_decoded(v) for k, v in data.items() if not k.startswith("@")
         }
         return cls(**decoded)
 
@@ -459,10 +465,20 @@ class System:
                     slice(None) for _ in self.data[tt.name].shape
                 ]
                 new_shape[axis_nframes] = f_idx
-                tmp.data[tt.name] = self.data[tt.name][tuple(new_shape)]
+                # Advanced indexing already produces an independent array.
+                # Copy only slice results that still share storage, avoiding a
+                # second full memcpy for permutations and index lists.
+                source = self.data[tt.name]
+                selected = source[tuple(new_shape)]
+                if np.shares_memory(selected, source):
+                    selected = selected.copy()
+                tmp.data[tt.name] = selected
             else:
-                # keep the original data
-                tmp.data[tt.name] = self.data[tt.name]
+                # Frame-independent values (atom names/types, ``orig``, and
+                # optional metadata) are usually lists or arrays.  Copy them
+                # as well as frame data so editing a slice can never mutate
+                # the source system through a shared mutable object.
+                tmp.data[tt.name] = deepcopy(self.data[tt.name])
         return tmp
 
     def append(self, system: System) -> bool:
@@ -478,7 +494,10 @@ class System:
             return False
         elif not len(self.data["atom_numbs"]):
             # this system is non-converged but the system to append is converged
-            self.data = system.data.copy()
+            # A shallow dict copy would still alias all arrays and lists in
+            # ``system.data``.  The first append must have the same ownership
+            # semantics as subsequent append operations.
+            self.data = deepcopy(system.data)
             return False
         if system.uniq_formula != self.uniq_formula:
             raise RuntimeError(
@@ -522,7 +541,9 @@ class System:
         return True
 
     def convert_to_mixed_type(self, type_map: list[str] | None = None):
-        """Convert the data dict to mixed type format structure, in order to append systems
+        """Convert the data dictionary to the mixed-type structure.
+
+        This allows appending systems
         with different formula but the same number of atoms. Change the 'atom_names' to
         one placeholder type 'MIXED_TOKEN' and add 'real_atom_types' to store the real type
         vectors according to the given type_map.
@@ -548,7 +569,9 @@ class System:
         self.data["atom_names"] = ["MIXED_TOKEN"]
 
     def sort_atom_names(self, type_map: list[str] | None = None):
-        """Sort atom_names of the system and reorder atom_numbs and atom_types accoarding
+        """Sort atom names and reorder the related type data.
+
+        Reorder atom_numbs and atom_types according
         to atom_names. If type_map is not given, atom_names will be sorted by
         alphabetical order. If type_map is given, atom_names will be type_map.
 
@@ -560,7 +583,9 @@ class System:
         self.data = sort_atom_names(self.data, type_map=type_map)
 
     def check_type_map(self, type_map: list[str] | None):
-        """Assign atom_names to type_map if type_map is given and different from
+        """Apply a type map when it differs from the current atom names.
+
+        Assign atom_names to type_map if type_map is given and different from
         atom_names.
 
         Parameters
@@ -572,7 +597,9 @@ class System:
             self.sort_atom_names(type_map=type_map)
 
     def apply_type_map(self, type_map: list[str]):
-        """Customize the element symbol order and  it should maintain order
+        """Customize the element-symbol order.
+
+        The selected order should remain
         consistency in dpgen or deepmd-kit. It is especially recommended
         for multiple complexsystems with multiple elements.
 
@@ -623,6 +650,7 @@ class System:
     @property
     def uniq_formula(self) -> str:
         """Return the uniq_formula of this system.
+
         The uniq_formula sort the elements in formula by names.
         Systems with the same uniq_formula can be append together.
         """
@@ -637,8 +665,9 @@ class System:
 
     @property
     def short_formula(self) -> str:
-        """Return the short formula of this system. Elements with zero number
-        will be removed.
+        """Return the short formula of this system.
+
+        Elements with zero number will be removed.
         """
         return "".join(
             [
@@ -657,8 +686,9 @@ class System:
 
     @property
     def short_name(self) -> str:
-        """Return the short name of this system (no more than 255 bytes), in
-        the following order:
+        """Return the short name of this system, limited to 255 bytes.
+
+        Candidate names are tried in the following order:
             - formula
             - short_formula
             - formula_hash.
@@ -690,7 +720,9 @@ class System:
 
     @post_funcs.register("remove_pbc")
     def remove_pbc(self, protect_layer: int = 9):
-        """This method does NOT delete the definition of the cells, it
+        """Remove periodicity while retaining an enclosing cell.
+
+        This method does NOT delete the definition of the cells, it
         (1) revises the cell to a cubic cell and ensures that the cell
         boundary to any atom in the system is no less than `protect_layer`
         (2) translates the system such that the center-of-geometry of the system
@@ -746,7 +778,8 @@ class System:
         self.data = add_atom_names(self.data, atom_names)
 
     def replicate(self, ncopy: list[int] | tuple[int, int, int]):
-        """Replicate the each frame  in the system in 3 dimensions.
+        """Replicate each frame in three dimensions.
+
         Each frame in the system will become a supercell.
 
         Parameters
@@ -852,6 +885,7 @@ class System:
         atom_pert_prob: float = 1.0,
     ):
         """Perturb each frame in the system randomly.
+
         The cell will be deformed randomly, and atoms will be displaced by a random distance in random direction.
 
         Parameters
@@ -1035,6 +1069,7 @@ class System:
 
     def remove_atom_names(self, atom_names: str | list[str]):
         """Remove atom names and all such atoms.
+
         For example, you may not remove EP atoms in TIP4P/Ew water, which
         is not a real atom.
         """
@@ -1184,6 +1219,9 @@ class LabeledSystem(System):
                 - ``vasp/outcar``: vasp OUTCAR
                 - ``deepmd/raw``: deepmd-kit raw
                 - ``deepmd/npy``: deepmd-kit compressed format (numpy binary)
+                - ``deepmd/npy/mixed``: deepmd-kit mixed type compressed format (numpy binary)
+                - ``deepmd/hdf5``: deepmd hdf5
+                - ``deepmd/hdf5/mixed``: deepmd mixed type hdf5
                 - ``qe/cp/traj``: Quantum Espresso CP trajectory files. should have: file_name+'.in', file_name+'.pos', file_name+'.evp' and file_name+'.for'
                 - ``qe/pw/scf``: Quantum Espresso PW single point calculations. Both input and output files are required. If file_name is a string, it denotes the output file name. Input file name is obtained by replacing 'out' by 'in' from file_name. Or file_name is a list, with the first element being the input file name and the second element being the output filename.
                 - ``siesta/output``: siesta SCF output file
@@ -1214,7 +1252,11 @@ class LabeledSystem(System):
             deepmd_name="force",
         ),
         DataType(
-            "mag_forces", np.ndarray, (Axis.NFRAMES, Axis.NATOMS, 3), required=False, deepmd_name="force_mag"
+            "force_mags",
+            np.ndarray,
+            (Axis.NFRAMES, Axis.NATOMS, 3),
+            required=False,
+            deepmd_name="force_mag",
         ),
         DataType(
             "virials",
@@ -1297,6 +1339,7 @@ class LabeledSystem(System):
 
     def correction(self, hl_sys: LabeledSystem) -> LabeledSystem:
         """Get energy and force correction between self and a high-level LabeledSystem.
+
         The self's coordinates will be kept, but energy and forces will be replaced by
         the correction between these two systems.
 
@@ -1369,7 +1412,9 @@ class MultiSystems:
     """A set containing several systems."""
 
     def __init__(self, *systems, type_map=None):
-        """Parameters
+        """Initialize a collection of systems.
+
+        Parameters
         ----------
         *systems : System
             The systems contained
@@ -1377,6 +1422,8 @@ class MultiSystems:
             Maps atom type to name
         """
         self.systems: dict[str, System] = {}
+        # short name to name
+        self._short_name_map: dict[str, str] = {}
         if type_map is not None:
             self.atom_names: list[str] = type_map
         else:
@@ -1386,16 +1433,17 @@ class MultiSystems:
     def from_fmt_obj(
         self, fmtobj: Format, directory, labeled: bool = True, **kwargs: Any
     ):
-        if not isinstance(fmtobj, dpdata.plugins.deepmd.DeePMDMixedFormat):
-            for dd in fmtobj.from_multi_systems(directory, **kwargs):
-                if labeled:
-                    system = LabeledSystem().from_fmt_obj(fmtobj, dd, **kwargs)
-                else:
-                    system = System().from_fmt_obj(fmtobj, dd, **kwargs)
-                system.sort_atom_names()
-                self.append(system)
-            return self
-        else:
+        try:
+            if not isinstance(fmtobj, dpdata.plugins.deepmd.DeePMDMixedFormat):
+                for dd in fmtobj.from_multi_systems(directory, **kwargs):
+                    if labeled:
+                        system = LabeledSystem().from_fmt_obj(fmtobj, dd, **kwargs)
+                    else:
+                        system = System().from_fmt_obj(fmtobj, dd, **kwargs)
+                    system.sort_atom_names()
+                    self.append(system)
+                return self
+
             system_list = []
             for dd in fmtobj.from_multi_systems(directory, **kwargs):
                 if labeled:
@@ -1408,6 +1456,16 @@ class MultiSystems:
                         system_list.append(System(data=data_item, **kwargs))
             self.append(*system_list)
             return self
+        except DataError as exc:
+            if (
+                labeled
+                and isinstance(fmtobj, dpdata.plugins.deepmd.DeePMDMixedFormat)
+                and str(exc) == "energies not found in data"
+            ):
+                raise DataError(
+                    f"{exc}. For coordinate-only mixed datasets, pass labeled=False."
+                ) from exc
+            raise
 
     def to_fmt_obj(self, fmtobj: Format, directory, *args: Any, **kwargs: Any):
         if not isinstance(fmtobj, dpdata.plugins.deepmd.DeePMDMixedFormat):
@@ -1422,10 +1480,14 @@ class MultiSystems:
             mixed_systems = fmtobj.mix_system(
                 *list(self.systems.values()), type_map=self.atom_names, **kwargs
             )
-            for fn in mixed_systems:
-                mixed_systems[fn].to_fmt_obj(
-                    fmtobj, os.path.join(directory, fn), *args, **kwargs
-                )
+            for fn, ss in zip(
+                fmtobj.to_multi_systems(
+                    list(mixed_systems.keys()), directory, **kwargs
+                ),
+                mixed_systems.values(),
+                strict=True,
+            ):
+                ss.to_fmt_obj(fmtobj, fn, *args, **kwargs)
         return self
 
     def to(self, fmt: str, *args: Any, **kwargs: Any) -> MultiSystems:
@@ -1451,6 +1513,8 @@ class MultiSystems:
         """Returns proerty stored in System by key or by idx."""
         if isinstance(key, int):
             return list(self.systems.values())[key]
+        if key in self._short_name_map:
+            return self.systems[self._short_name_map[key]]
         return self.systems[key]
 
     def __len__(self):
@@ -1472,9 +1536,32 @@ class MultiSystems:
         raise RuntimeError("Unspported data structure")
 
     @classmethod
-    def from_file(cls, file_name, fmt: str, **kwargs: Any):
+    def from_file(
+        cls, file_name, fmt: str, *, labeled: bool = True, **kwargs: Any
+    ) -> MultiSystems:
+        """Load multiple systems from a file or directory.
+
+        Parameters
+        ----------
+        file_name
+            Source accepted by the selected format backend.
+        fmt : str
+            Format identifier, such as ``"deepmd/npy/mixed"``.
+        labeled : bool, default=True
+            Load :class:`LabeledSystem` objects when true. Set this to false for
+            coordinate-only data that does not contain energies or forces.
+        **kwargs
+            Additional arguments forwarded to the format backend.
+
+        Returns
+        -------
+        MultiSystems
+            Systems reconstructed from the source.
+        """
         multi_systems = cls()
-        multi_systems.load_systems_from_file(file_name=file_name, fmt=fmt, **kwargs)
+        multi_systems.load_systems_from_file(
+            file_name=file_name, fmt=fmt, labeled=labeled, **kwargs
+        )
         return multi_systems
 
     @classmethod
@@ -1486,8 +1573,10 @@ class MultiSystems:
         type_map: list[str] | None = None,
     ):
         multi_systems = cls()
+        # Do not prepend ``./``: doing so turns an absolute directory into a
+        # relative pattern and silently yields no matches.
         target_file_list = sorted(
-            glob.glob(f"./{dir_name}/**/{file_name}", recursive=True)
+            glob.glob(os.path.join(dir_name, "**", file_name), recursive=True)
         )
         for target_file in target_file_list:
             multi_systems.append(
@@ -1495,10 +1584,22 @@ class MultiSystems:
             )
         return multi_systems
 
-    def load_systems_from_file(self, file_name=None, fmt: str | None = None, **kwargs):
+    def load_systems_from_file(
+        self,
+        file_name=None,
+        fmt: str | None = None,
+        *,
+        labeled: bool = True,
+        **kwargs,
+    ):
+        """Load systems into this collection.
+
+        ``labeled=False`` selects regular :class:`System` objects, which is
+        required for DeepMD datasets that omit label arrays.
+        """
         assert fmt is not None
         fmt = fmt.lower()
-        return self.from_fmt_obj(load_format(fmt), file_name, **kwargs)
+        return self.from_fmt_obj(load_format(fmt), file_name, labeled=labeled, **kwargs)
 
     def get_nframes(self) -> int:
         """Returns number of frames in all systems."""
@@ -1532,6 +1633,7 @@ class MultiSystems:
             self.systems[formula].append(system)
         else:
             self.systems[formula] = system.copy()
+        self._short_name_map[system.short_name] = formula
 
     def check_atom_names(self, system: System):
         """Make atom_names in all systems equal, prevent inconsistent atom_types."""
@@ -1544,11 +1646,14 @@ class MultiSystems:
             self.atom_names.extend(new_in_system)
             # Add this atom_name to each system, and change their names
             new_systems = {}
+            new_short_name_map = {}
             for each_system in self.systems.values():
                 each_system.add_atom_names(new_in_system)
                 each_system.sort_atom_names(type_map=self.atom_names)
                 new_systems[each_system.formula] = each_system
+                new_short_name_map[each_system.short_name] = each_system.formula
             self.systems = new_systems
+            self._short_name_map = new_short_name_map
         if len(new_in_self):
             # Previous atom_name not in this system
             system.add_atom_names(new_in_self)
@@ -1641,6 +1746,7 @@ class MultiSystems:
 
     def correction(self, hl_sys: MultiSystems) -> MultiSystems:
         """Get energy and force correction between self (assumed low-level) and a high-level MultiSystems.
+
         The self's coordinates will be kept, but energy and forces will be replaced by
         the correction between these two systems.
 
@@ -1754,8 +1860,10 @@ def get_cls_name(cls: type[Any]) -> str:
 
 
 def add_format_methods():
-    """Add format methods to System, LabeledSystem, and MultiSystems; add data types
-    to System and LabeledSystem.
+    """Add registered format methods and data types to the System classes.
+
+    This updates System, LabeledSystem, and MultiSystems with convenience
+    methods and adds registered data types to System and LabeledSystem.
 
     Notes
     -----

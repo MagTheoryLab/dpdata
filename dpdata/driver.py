@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 from .plugin import Plugin
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import ase.calculators.calculator
 
 
 class Driver(ABC):
-    """The base class for a driver plugin. A driver can
-    label a pure System to generate the LabeledSystem.
+    """Base class for driver plugins.
+
+    A driver can label a pure System to generate the LabeledSystem.
 
     See Also
     --------
@@ -138,9 +141,13 @@ class HybridDriver(Driver):
             if isinstance(driver, Driver):
                 self.drivers.append(driver)
             elif isinstance(driver, dict):
-                type = driver["type"]
-                del driver["type"]
-                self.drivers.append(Driver.get_driver(type)(**driver))
+                # Never consume the caller's configuration dictionary.  A
+                # copied config can be reused to construct another hybrid
+                # driver, which is particularly useful in workflows that
+                # build one driver per system.
+                config = driver.copy()
+                type = config.pop("type")
+                self.drivers.append(Driver.get_driver(type)(**config))
             else:
                 raise TypeError("driver should be Driver or dict")
 
@@ -174,8 +181,9 @@ class HybridDriver(Driver):
 
 
 class Minimizer(ABC):
-    """The base class for a minimizer plugin. A minimizer can
-    minimize geometry.
+    """Base class for minimizer plugins.
+
+    A minimizer can minimize geometry.
     """
 
     __MinimizerPlugin = Plugin()

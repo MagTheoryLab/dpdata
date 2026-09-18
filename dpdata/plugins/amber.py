@@ -4,8 +4,8 @@ import os
 import subprocess as sp
 import tempfile
 
-import dpdata.amber.md
-import dpdata.amber.sqm
+import dpdata.formats.amber.md
+import dpdata.formats.amber.sqm
 from dpdata.driver import Driver, Minimizer
 from dpdata.format import Format
 from dpdata.utils import open_file
@@ -13,6 +13,17 @@ from dpdata.utils import open_file
 
 @Format.register("amber/md")
 class AmberMDFormat(Format):
+    """AMBER molecular-dynamics trajectory and label files.
+
+    `AMBER <https://ambermd.org/>`_ is a suite of biomolecular simulation
+    programs for molecular dynamics simulations and analysis.
+
+    Coordinates and topology are read from ``.nc`` and ``.parm7`` files.
+    Labeled loading additionally requires the ``.mdfrc`` force trajectory and
+    takes energies from either the ``.mden`` or the ``.mdout`` file. The
+    ``parmed`` optional dependency is required.
+    """
+
     def from_system(
         self,
         file_name=None,
@@ -21,12 +32,34 @@ class AmberMDFormat(Format):
         use_element_symbols=None,
         **kwargs,
     ):
+        """Load an unlabeled AMBER trajectory.
+
+        Parameters
+        ----------
+        file_name : str, optional
+            Common prefix used to infer ``<prefix>.parm7`` and ``<prefix>.nc``.
+        parm7_file : str, optional
+            Explicit AMBER topology file. Overrides the inferred path.
+        nc_file : str, optional
+            Explicit NetCDF trajectory file. Overrides the inferred path.
+        use_element_symbols : list[int] or str, optional
+            Atoms whose element symbols are used instead of AMBER atom types,
+            given either as a list of atom indexes or as an AMBER mask string
+            selecting them.
+        **kwargs : dict
+            Additional format arguments accepted for API compatibility.
+
+        Returns
+        -------
+        dict
+            Unlabeled trajectory data.
+        """
         # assume the prefix is the same if the spefic name is not given
         if parm7_file is None:
             parm7_file = file_name + ".parm7"
         if nc_file is None:
             nc_file = file_name + ".nc"
-        return dpdata.amber.md.read_amber_traj(
+        return dpdata.formats.amber.md.read_amber_traj(
             parm7_file=parm7_file,
             nc_file=nc_file,
             use_element_symbols=use_element_symbols,
@@ -44,6 +77,37 @@ class AmberMDFormat(Format):
         use_element_symbols=None,
         **kwargs,
     ):
+        """Load a labeled AMBER trajectory.
+
+        Parameters
+        ----------
+        file_name : str, optional
+            Common prefix used to infer the AMBER file names.
+        parm7_file : str, optional
+            Explicit AMBER topology file.
+        nc_file : str, optional
+            Explicit NetCDF coordinate trajectory.
+        mdfrc_file : str, optional
+            Explicit force trajectory. Required for labeled loading; inferred
+            from ``file_name`` when not given.
+        mden_file : str, optional
+            Explicit energy file. Used when present, otherwise ``mdout_file``
+            supplies the energies.
+        mdout_file : str, optional
+            Explicit AMBER text output. Fallback energy source when
+            ``mden_file`` is absent.
+        use_element_symbols : list[int] or str, optional
+            Atoms whose element symbols are used instead of AMBER atom types,
+            given either as a list of atom indexes or as an AMBER mask string
+            selecting them.
+        **kwargs : dict
+            Additional format arguments accepted for API compatibility.
+
+        Returns
+        -------
+        dict
+            Labeled trajectory data assembled from the supplied files.
+        """
         # assume the prefix is the same if the spefic name is not given
         if parm7_file is None:
             parm7_file = file_name + ".parm7"
@@ -55,26 +119,63 @@ class AmberMDFormat(Format):
             mden_file = file_name + ".mden"
         if mdout_file is None:
             mdout_file = file_name + ".mdout"
-        return dpdata.amber.md.read_amber_traj(
+        return dpdata.formats.amber.md.read_amber_traj(
             parm7_file, nc_file, mdfrc_file, mden_file, mdout_file, use_element_symbols
         )
 
 
 @Format.register("sqm/out")
 class SQMOutFormat(Format):
+    """AmberTools SQM output from a semiempirical calculation.
+
+    `AmberTools <https://ambermd.org/AmberTools.php>`_ is a collection of
+    complementary tools for AMBER simulations. SQM implements semiempirical
+    quantum-mechanical methods.
+
+    The same file can be loaded as an unlabeled system, or as a labeled system
+    when the output contains gradients that can be converted to forces.
+    """
+
     def from_system(self, fname, **kwargs):
-        """Read from ambertools sqm.out."""
-        return dpdata.amber.sqm.parse_sqm_out(fname)
+        """Read coordinates from an AmberTools ``sqm.out`` file.
+
+        Parameters
+        ----------
+        fname : str or os.PathLike
+            SQM output file.
+        **kwargs : dict
+            Additional format arguments accepted for API compatibility.
+        """
+        return dpdata.formats.amber.sqm.parse_sqm_out(fname)
 
     def from_labeled_system(self, fname, **kwargs):
-        """Read from ambertools sqm.out."""
-        data = dpdata.amber.sqm.parse_sqm_out(fname)
+        """Read coordinates, energy, and forces from ``sqm.out``.
+
+        Parameters
+        ----------
+        fname : str or os.PathLike
+            SQM output file containing gradients.
+        **kwargs : dict
+            Additional format arguments accepted for API compatibility.
+        """
+        data = dpdata.formats.amber.sqm.parse_sqm_out(fname)
         assert "forces" in list(data.keys()), f"No forces in {fname}"
         return data
 
 
 @Format.register("sqm/in")
 class SQMINFormat(Format):
+    """AmberTools SQM input for semiempirical calculations.
+
+    `AmberTools <https://ambermd.org/AmberTools.php>`_ provides the SQM
+    module for semiempirical QM calculations.
+
+    This write-only format serializes one nonperiodic System frame with its
+    charge, multiplicity, semiempirical method, and minimization-cycle limit.
+    Setting ``maxcyc=0`` requests a single-point calculation; positive values
+    request geometry minimization.
+    """
+
     def to_system(self, data, fname=None, frame_idx=0, **kwargs):
         """Generate input files for semi-emperical calculation in sqm software.
 
@@ -104,7 +205,7 @@ class SQMINFormat(Format):
                 mult : int, default=1
                     multiplicity. Only 1 is allowed.
         """
-        return dpdata.amber.sqm.make_sqm_in(data, fname, frame_idx, **kwargs)
+        return dpdata.formats.amber.sqm.make_sqm_in(data, fname, frame_idx, **kwargs)
 
 
 @Driver.register("sqm")

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import dpdata.gromacs.gro
+import dpdata.formats.gromacs.gro
 from dpdata.format import Format
 from dpdata.utils import open_file
 
@@ -13,6 +13,16 @@ if TYPE_CHECKING:
 @Format.register("gro")
 @Format.register("gromacs/gro")
 class GromacsGroFormat(Format):
+    """GROMACS ``.gro`` structure or trajectory file.
+
+    `GROMACS <https://www.gromacs.org/>`_ is a versatile package for
+    molecular dynamics simulations.
+
+    GRO stores atom names, Cartesian coordinates, an optional velocity block,
+    and a periodic box. dpdata reads one or more concatenated frames and can
+    write either a selected frame or the complete trajectory.
+    """
+
     def from_system(self, file_name, format_atom_name=True, **kwargs):
         """Load gromacs .gro file.
 
@@ -23,9 +33,9 @@ class GromacsGroFormat(Format):
         format_atom_name : bool
             Whether to format the atom name
         **kwargs : dict
-            other parameters
+            Additional format arguments accepted for API compatibility.
         """
-        return dpdata.gromacs.gro.file_to_system_data(
+        return dpdata.formats.gromacs.gro.file_to_system_data(
             file_name, format_atom_name=format_atom_name, **kwargs
         )
 
@@ -43,17 +53,26 @@ class GromacsGroFormat(Format):
         frame_idx : int
             The index of the frame to dump
         **kwargs : dict
-            other parameters
+            Additional writer options described below.
+
+        Other Parameters
+        ----------------
+        resname : str, default="MOL"
+            Residue name written for every atom.
+        shift : int, default=0
+            Offset added to the one-based atom serial numbers.
         """
         assert frame_idx < len(data["coords"])
         if frame_idx == -1:
             strs = []
             for idx in range(data["coords"].shape[0]):
-                gro_str = dpdata.gromacs.gro.from_system_data(data, f_idx=idx, **kwargs)
+                gro_str = dpdata.formats.gromacs.gro.from_system_data(
+                    data, f_idx=idx, **kwargs
+                )
                 strs.append(gro_str)
             gro_str = "\n".join(strs)
         else:
-            gro_str = dpdata.gromacs.gro.from_system_data(
+            gro_str = dpdata.formats.gromacs.gro.from_system_data(
                 data, f_idx=frame_idx, **kwargs
             )
 

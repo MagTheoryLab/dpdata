@@ -1,19 +1,20 @@
 from __future__ import annotations
 
+import dpdata.formats.openmx.omx
 import dpdata.md.pbc
-import dpdata.openmx.omx
 from dpdata.format import Format
 
 
 @Format.register("openmx/md")
 class OPENMXFormat(Format):
-    """Format for the `OpenMX <https://www.openmx-square.org/>`.
+    """Output pair from `OpenMX <https://www.openmx-square.org/>`_.
 
     OpenMX (Open source package for Material eXplorer) is a nano-scale material simulation package based on DFT, norm-conserving pseudopotentials, and pseudo-atomic localized basis functions.
 
     Note that two output files, System.Name.dat and System.Name.md, are required.
 
-    Use the `openmx/md` keyword argument to supply this format.
+    Use the ``openmx/md`` alias and pass the shared ``System.Name`` prefix;
+    dpdata appends ``.dat`` and ``.md`` automatically.
     """
 
     @Format.post("rot_lower_triangular")
@@ -35,7 +36,7 @@ class OPENMXFormat(Format):
         fname = f"{file_name}.dat"
         mdname = f"{file_name}.md"
 
-        data, _ = dpdata.openmx.omx.to_system_data(fname, mdname)
+        data, _ = dpdata.formats.openmx.omx.to_system_data(fname, mdname)
         data["coords"] = dpdata.md.pbc.apply_pbc(
             data["coords"],
             data["cells"],
@@ -61,12 +62,12 @@ class OPENMXFormat(Format):
         fname = f"{file_name}.dat"
         mdname = f"{file_name}.md"
 
-        data, cs = dpdata.openmx.omx.to_system_data(fname, mdname)
+        data, cs = dpdata.formats.openmx.omx.to_system_data(fname, mdname)
         data["coords"] = dpdata.md.pbc.apply_pbc(
             data["coords"],
             data["cells"],
         )
-        data["energies"], data["forces"] = dpdata.openmx.omx.to_system_label(
+        data["energies"], data["forces"] = dpdata.formats.openmx.omx.to_system_label(
             fname, mdname
         )
         return data
