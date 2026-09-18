@@ -8,6 +8,7 @@ import dpdata.formats.lammps.dump
 import dpdata.formats.lammps.lmp
 from dpdata.data_type import Axis, DataType
 from dpdata.format import Format
+from dpdata.plugins.mag_data import register_mag_data
 from dpdata.utils import open_file
 
 if TYPE_CHECKING:
@@ -15,25 +16,8 @@ if TYPE_CHECKING:
 
 
 def register_spin(data):
-    if "spins" in data:
-        dt = DataType(
-            "spins",
-            np.ndarray,
-            (Axis.NFRAMES, Axis.NATOMS, 3),
-            required=False,
-            deepmd_name="spin",
-        )
-        dpdata.System.register_data_type(dt)
-    if "hubbard_u" in data:
-        dt = DataType(
-            "hubbard_u",
-            np.ndarray,
-            (Axis.NFRAMES, Axis.NATOMS, 1),
-            required=False,
-            deepmd_name="aparam",
-        )
-        dpdata.System.register_data_type(dt)
-        # dpdata.LabeledSystem.register_data_type(dt)
+    """Register the magnetic data types carried by a LAMMPS file."""
+    register_mag_data(data)
 
 
 def register_charge(data: dict) -> None:

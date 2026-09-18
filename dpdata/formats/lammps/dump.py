@@ -600,7 +600,13 @@ def system_data(
     system["atom_types"] = get_atype(lines, type_idx_zero=type_idx_zero)
     system["coords"] = [safe_get_posi(lines, cell, np.array(orig), unwrap)]
     aparam = np.array(extract_aparam_numbers(input_file), dtype=np.float32)
-    if aparam.size > 0:
+    if 0 < aparam.size < len(system["atom_numbs"]):
+        warnings.warn(
+            f"aparam lists {aparam.size} values for "
+            f"{len(system['atom_numbs'])} atom types; the on-site U values are "
+            "not read."
+        )
+    elif aparam.size > 0:
         hubbard_u = aparam[system["atom_types"]].reshape((-1, 1))
         system["hubbard_u"] = [hubbard_u] * len(array_lines)
     spin_keys = get_spin_keys(input_file)

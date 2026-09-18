@@ -11,6 +11,7 @@ import dpdata.formats.abacus.scf
 from dpdata.data_type import Axis, DataType
 from dpdata.format import Format
 from dpdata.formats.abacus.stru import get_frame_from_stru, make_unlabeled_stru
+from dpdata.plugins.mag_data import register_mag_data
 from dpdata.utils import open_file
 
 if TYPE_CHECKING:
@@ -100,38 +101,6 @@ class AbacusSTRUFormat(Format):
         with open_file(file_name, "w") as fp:
             fp.write(stru_string)
 
-
-def register_mag_data(data):
-    if "spins" in data:
-        dt = DataType(
-            "spins",
-            np.ndarray,
-            (Axis.NFRAMES, Axis.NATOMS, 3),
-            required=False,
-            deepmd_name="spin",
-        )
-        dpdata.System.register_data_type(dt)
-        dpdata.LabeledSystem.register_data_type(dt)
-    if "force_mags" in data:
-        dt = DataType(
-            "force_mags",
-            np.ndarray,
-            (Axis.NFRAMES, Axis.NATOMS, 3),
-            required=False,
-            deepmd_name="force_mag",
-        )
-        dpdata.System.register_data_type(dt)
-        dpdata.LabeledSystem.register_data_type(dt)
-    if "hubbard_u" in data:
-        dt = DataType(
-            "hubbard_u",
-            np.ndarray,
-            (Axis.NFRAMES, Axis.NATOMS, 1),
-            required=False,
-            deepmd_name="aparam",
-        )
-        dpdata.System.register_data_type(dt)
-        dpdata.LabeledSystem.register_data_type(dt)
 
 def register_move_data(data):
     if "move" in data:

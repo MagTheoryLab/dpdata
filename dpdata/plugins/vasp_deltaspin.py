@@ -7,7 +7,7 @@ import numpy as np
 import dpdata.vasp_deltaspin.outcar
 import dpdata.vasp_deltaspin.poscar
 from dpdata.format import Format
-from dpdata.plugins.abacus import register_mag_data
+from dpdata.plugins.mag_data import register_mag_data
 from dpdata.utils import uniq_atom_names
 
 

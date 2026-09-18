@@ -263,8 +263,16 @@ def get_frame(fname):
 
     input_dict = read_input(path_in)
     if "hubbard_u" in input_dict:
-        hubbard_u = np.array( input_dict["hubbard_u"].split(),dtype=np.float32)
-        hubbard_u = hubbard_u[data["atom_types"]].reshape((-1,1))
-        data["hubbard_u"]=np.array([hubbard_u] )
+        # hubbard_u is given once per atom type, like the LAMMPS aparam list.
+        hubbard_u = np.array(input_dict["hubbard_u"].split(), dtype=np.float32)
+        if hubbard_u.size < len(data["atom_numbs"]):
+            warnings.warn(
+                f"hubbard_u lists {hubbard_u.size} values for "
+                f"{len(data['atom_numbs'])} atom types; the on-site U values "
+                "are not read."
+            )
+        else:
+            hubbard_u = hubbard_u[data["atom_types"]].reshape((-1, 1))
+            data["hubbard_u"] = np.array([hubbard_u])
 
     return data

@@ -14,42 +14,15 @@ import dpdata.formats.deepmd.raw
 from dpdata.data_type import Axis, DataType
 from dpdata.driver import Driver
 from dpdata.format import Format
+from dpdata.plugins.mag_data import register_mag_data
 
 if TYPE_CHECKING:
     import h5py
 
 
 def register_spin():
-    dt = DataType(
-        "spins",
-        np.ndarray,
-        (Axis.NFRAMES, Axis.NATOMS, 3),
-        required=False,
-        deepmd_name="spin",
-    )
-    dpdata.System.register_data_type(dt)
-    dpdata.LabeledSystem.register_data_type(dt)
-
-    dt = DataType(
-        "force_mags",
-        np.ndarray,
-        (Axis.NFRAMES, Axis.NATOMS, 3),
-        required=False,
-        deepmd_name="force_mag",
-    )
-    dpdata.System.register_data_type(dt)
-    dpdata.LabeledSystem.register_data_type(dt)
-
-
-    dt = DataType(
-        "hubbard_u",
-        np.ndarray,
-        (Axis.NFRAMES, Axis.NATOMS, 1),
-        required=False,
-        deepmd_name="aparam",
-    )
-    dpdata.System.register_data_type(dt)
-    dpdata.LabeledSystem.register_data_type(dt)
+    """Register the magnetic data types stored in a DeePMD data set."""
+    register_mag_data()
 
 @Format.register("deepmd")
 @Format.register("deepmd/raw")
