@@ -177,7 +177,7 @@ class TestVasp6DeltaSpinPoscar(unittest.TestCase):
 
     def test_incar_keys_are_written(self):
         with tempfile.TemporaryDirectory() as directory:
-            _, path, incar = self.dump(directory)
+            _, _, incar = self.dump(directory)
 
         self.assertEqual(incar.count("MAGMOM"), 1)
         self.assertIn("LDELTASPIN = .TRUE.", incar)
@@ -230,6 +230,52 @@ class TestVasp6DeltaSpinPoscar(unittest.TestCase):
                 system.to(
                     "vasp6_deltaspin/poscar", os.path.join(directory, "POSCAR")
                 )
+
+
+class TestVasp6DeltaSpinRelax(unittest.TestCase):
+    """A short DeltaSpin relaxation: one table per ionic step."""
+
+    def setUp(self):
+        self.path = os.path.join("poscars", "OUTCAR.fe2.deltaspin.relax")
+        self.system = dpdata.LabeledSystem(self.path, fmt="vasp6_deltaspin/outcar")
+
+    def test_frames(self):
+        self.assertEqual(self.system.get_nframes(), 2)
+        np.testing.assert_allclose(
+            self.system["energies"], [-14.38633426, -14.38637256], atol=1e-9
+        )
+
+    def test_each_frame_has_its_own_table(self):
+        np.testing.assert_allclose(
+            self.system["force_mags"][0],
+            [
+                [0.0072761923, 0.0000003343, 0.0518581897],
+                [-0.0072805932, 0.0000003982, 0.0518628325],
+            ],
+            atol=1e-12,
+        )
+        np.testing.assert_allclose(
+            self.system["force_mags"][1],
+            [
+                [0.0072827933, 0.0000000660, 0.0522787697],
+                [-0.0072848392, 0.0000000703, 0.0522803643],
+            ],
+            atol=1e-12,
+        )
+        np.testing.assert_allclose(
+            self.system["spins"][1],
+            [
+                [0.3499999840, -0.0000000002, 2.6770000195],
+                [-0.3499999851, -0.0000000006, 2.6770000302],
+            ],
+            atol=1e-12,
+        )
+
+    def test_matches_plain_outcar_reader(self):
+        plain = dpdata.LabeledSystem(self.path, fmt="vasp/outcar")
+        self.assertEqual(plain.get_nframes(), self.system.get_nframes())
+        np.testing.assert_allclose(plain["energies"], self.system["energies"])
+        np.testing.assert_allclose(plain["forces"], self.system["forces"])
 
 
 if __name__ == "__main__":
