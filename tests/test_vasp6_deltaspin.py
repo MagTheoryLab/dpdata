@@ -157,5 +157,80 @@ class TestVasp6DeltaSpinTableFormat(unittest.TestCase):
         self.assertIn("table header", str(context.exception))
 
 
+class TestVasp6DeltaSpinPoscar(unittest.TestCase):
+    INCAR = (
+        "SYSTEM = Fe2\n"
+        "ENCUT = 400\n"
+        "MAGMOM = 0 0 5.0  0 0 5.0\n"
+        "LSORBIT = .TRUE.\n"
+        "LNONCOLLINEAR = .TRUE.\n"
+    )
+
+    def dump(self, directory, **kwargs):
+        system = dpdata.LabeledSystem(OUTCAR, fmt="vasp6_deltaspin/outcar")
+        with open(os.path.join(directory, "INCAR"), "w") as fp:
+            fp.write(self.INCAR)
+        path = os.path.join(directory, "POSCAR")
+        system.to("vasp6_deltaspin/poscar", path, **kwargs)
+        with open(os.path.join(directory, "INCAR")) as fp:
+            return system, path, fp.read()
+
+    def test_incar_keys_are_written(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _, path, incar = self.dump(directory)
+
+        self.assertEqual(incar.count("MAGMOM"), 1)
+        self.assertIn("LDELTASPIN = .TRUE.", incar)
+        self.assertIn("DELTASPIN_ATOMS = 1 1", incar)
+        self.assertIn("DELTASPIN_COMPONENTS = 1 1 1", incar)
+        self.assertIn(
+            "MAGMOM = 0.3500000138 -0.0000000001 2.6770001023 "
+            "-0.3500000098 0.0000000000 2.6770000828",
+            incar,
+        )
+        self.assertIn(
+            "M_DELTASPIN = 0.3500000138 -0.0000000001 2.6770001023 "
+            "-0.3500000098 0.0000000000 2.6770000828",
+            incar,
+        )
+        self.assertIn("ENCUT = 400", incar)
+        with tempfile.TemporaryDirectory() as directory:
+            system = dpdata.LabeledSystem(OUTCAR, fmt="vasp6_deltaspin/outcar")
+            with open(os.path.join(directory, "INCAR"), "w") as fp:
+                fp.write(self.INCAR)
+            out = os.path.join(directory, "POSCAR")
+            system.to("vasp6_deltaspin/poscar", out)
+            back = dpdata.System(out, fmt="vasp6_deltaspin/poscar")
+        np.testing.assert_allclose(back["spins"][0], system["spins"][0], atol=1e-9)
+        np.testing.assert_allclose(back["coords"][0], system["coords"][0], atol=1e-6)
+        np.testing.assert_allclose(back["cells"][0], system["cells"][0], atol=1e-9)
+
+    def test_constraint_flags(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _, _, incar = self.dump(
+                directory, deltaspin_atoms=[1, 0], deltaspin_components="0 0 1"
+            )
+        self.assertIn("DELTASPIN_ATOMS = 1 0", incar)
+        self.assertIn("DELTASPIN_COMPONENTS = 0 0 1", incar)
+
+    def test_invalid_flags_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ValueError):
+                self.dump(directory, deltaspin_atoms=[1, 0, 1])
+            with self.assertRaises(ValueError):
+                self.dump(directory, deltaspin_components="0 2 1")
+
+    def test_missing_spins_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            system = dpdata.LabeledSystem(OUTCAR, fmt="vasp6_deltaspin/outcar")
+            system.data.pop("spins")
+            with open(os.path.join(directory, "INCAR"), "w") as fp:
+                fp.write(self.INCAR)
+            with self.assertRaises(ValueError):
+                system.to(
+                    "vasp6_deltaspin/poscar", os.path.join(directory, "POSCAR")
+                )
+
+
 if __name__ == "__main__":
     unittest.main()
