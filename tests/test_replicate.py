@@ -64,5 +64,35 @@ class TestReplicateTriclinicBox(unittest.TestCase, CompSys, IsPBC):
         self.places = 6
 
 
+class TestReplicateSpins(unittest.TestCase):
+    def test_spins_follow_atoms_in_each_frame(self):
+        system = dpdata.System("poscars/POSCAR.SiC", fmt="vasp/poscar")
+        system.append(system.copy())
+        natoms = system.get_natoms()
+        spins = np.arange(2 * natoms * 3, dtype=float).reshape(2, natoms, 3)
+        system.data["spins"] = spins.copy()
+
+        for ncopy in [(1, 1, 1), (2, 3, 2)]:
+            with self.subTest(ncopy=ncopy):
+                replicated = system.replicate(ncopy)
+                self.assertEqual(
+                    replicated["spins"].shape, (2, natoms * np.prod(ncopy), 3)
+                )
+                for frame in range(2):
+                    for atom in range(natoms):
+                        for copy, shift in enumerate(np.ndindex(ncopy)):
+                            index = atom * np.prod(ncopy) + copy
+                            np.testing.assert_array_equal(
+                                replicated["spins"][frame, index], spins[frame, atom]
+                            )
+                            np.testing.assert_allclose(
+                                replicated["coords"][frame, index],
+                                system["coords"][frame, atom]
+                                + np.array(shift) @ system["cells"][frame],
+                            )
+                replicated["spins"][0, 0, 0] = -100
+                np.testing.assert_array_equal(system["spins"], spins)
+
+
 if __name__ == "__main__":
     unittest.main()

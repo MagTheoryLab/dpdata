@@ -92,7 +92,11 @@ class System:
             "coords", np.ndarray, (Axis.NFRAMES, Axis.NATOMS, 3), deepmd_name="coord"
         ),
         DataType(
-            "spins", np.ndarray, (Axis.NFRAMES, Axis.NATOMS, 3), required=False, deepmd_name="spin"
+            "spins",
+            np.ndarray,
+            (Axis.NFRAMES, Axis.NATOMS, 3),
+            required=False,
+            deepmd_name="spin",
         ),
         DataType(
             "real_atom_types", np.ndarray, (Axis.NFRAMES, Axis.NATOMS), required=False
@@ -833,6 +837,9 @@ class System:
         tmp.data["coords"] = np.reshape(
             np.transpose(tmp.data["coords"], [3, 4, 0, 1, 2, 5]), (nframes, -1, 3)
         )
+        if "spins" in data:
+            # Coordinates group all periodic copies of each original atom.
+            tmp.data["spins"] = np.repeat(data["spins"], np.prod(ncopy), axis=1)
         return tmp
 
     def replace(self, initial_atom_type: str, end_atom_type: str, replace_num: int):
