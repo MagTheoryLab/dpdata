@@ -136,6 +136,9 @@ class VASP6DeltaSpinOutcarFormat(Format):
     reader returns those observables as ``spins`` and ``force_mags`` next to
     the usual cells, coordinates, energies, forces, and virials.
 
+    When the OUTCAR contains a full Cartesian virial tensor, all nine
+    components are used, including any asymmetry.
+
     Atoms without a moment constraint have no moment label, so their ``spins``
     entry is zero. ``force_mags`` is zero for every unconstrained component by
     construction.
@@ -186,12 +189,6 @@ class VASP6DeltaSpinOutcarFormat(Format):
         )
         if tmp_virial is not None:
             data["virials"] = tmp_virial
-        # scale virial to the unit of eV
-        if "virials" in data:
-            v_pref = 1 * 1e3 / 1.602176621e6
-            for ii in range(data["cells"].shape[0]):
-                vol = np.linalg.det(np.reshape(data["cells"][ii], [3, 3]))
-                data["virials"][ii] *= v_pref * vol
         data = uniq_atom_names(data)
         register_mag_data(data)
 

@@ -24,9 +24,9 @@ SECOND_FORCE_ROW_UNCONSTRAINED = (
 )
 
 
-def patched_outcar(directory, replacements):
+def patched_outcar(directory, replacements, source=OUTCAR):
     """Write a copy of the fixture with a few lines replaced."""
-    with open(OUTCAR) as fp:
+    with open(source) as fp:
         text = fp.read()
     for old, new in replacements:
         assert old in text, f"fixture does not contain {old!r}"
@@ -276,6 +276,35 @@ class TestVasp6DeltaSpinRelax(unittest.TestCase):
         self.assertEqual(plain.get_nframes(), self.system.get_nframes())
         np.testing.assert_allclose(plain["energies"], self.system["energies"])
         np.testing.assert_allclose(plain["forces"], self.system["forces"])
+
+    def test_full_virial_takes_precedence_per_frame(self):
+        # Cartesian rows from a VASP 6 DeltaSpin Fe32 OUTCAR.
+        tensor = """\
+ Virial tensor (eV/cell)
+                               x                             y                             z
+--------------------------------------------------------------------------------------------
+ x           224.683794235293135             0.001300274837711            -0.002709951633648
+ y             0.001308828306185           227.061393271659199            -0.000557031115406
+ z            -0.002704551330098            -0.000558405783358           227.065333929952885
+--------------------------------------------------------------------------------------------
+
+"""
+        energy = "  free  energy   TOTEN"
+        with tempfile.TemporaryDirectory() as directory:
+            path = patched_outcar(
+                directory, [(energy, tensor + energy)], source=self.path
+            )
+            system = dpdata.LabeledSystem(path, fmt="vasp6_deltaspin/outcar")
+
+        np.testing.assert_array_equal(
+            system["virials"][0],
+            [
+                [224.683794235293135, 0.001300274837711, -0.002709951633648],
+                [0.001308828306185, 227.061393271659199, -0.000557031115406],
+                [-0.002704551330098, -0.000558405783358, 227.065333929952885],
+            ],
+        )
+        np.testing.assert_array_equal(system["virials"][1], self.system["virials"][1])
 
 
 if __name__ == "__main__":

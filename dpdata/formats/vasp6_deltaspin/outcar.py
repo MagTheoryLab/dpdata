@@ -29,6 +29,7 @@ _FORCE_HEADER = ("ion", "elem", "cx", "cy", "cz", "MFx", "MFy", "MFz")
 _OBSERVABLES_TITLE = "DeltaSpin final constrained observables"
 _FORCE_TITLE = "Magnetic force (eV/uB)"
 _STATUS_TITLE = "DeltaSpin final status"
+_VIRIAL_TITLE = "Virial tensor (eV/cell)"
 
 _NUMBER = r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[EeDd][+-]?\d+)?"
 _MOMENT_DEF_RE = re.compile(r"DELTASPIN_MOMENT_DEF\s*=\s*(\d+)")
@@ -216,11 +217,26 @@ def _check_moments(observables, ntot):
             raise ValueError(f"DeltaSpin moment of ion {ion} is not finite")
 
 
+def _parse_virial(lines):
+    """Read the full Cartesian virial in eV when the step provides it."""
+    for idx, line in enumerate(lines):
+        if line.strip() == _VIRIAL_TITLE:
+            rows = [row.split() for row in lines[idx + 3 : idx + 6]]
+            if [row[0] for row in rows if len(row) == 4] != ["x", "y", "z"]:
+                raise ValueError(f"incomplete or invalid '{_VIRIAL_TITLE}' table")
+            tensor = np.array([[_to_float(value) for value in row[1:]] for row in rows])
+            if not np.isfinite(tensor).all():
+                raise ValueError(f"non-finite value in '{_VIRIAL_TITLE}' table")
+            return tensor
+    return None
+
+
 def get_frames(fname, begin=0, step=1, convergence_check=True):
     """Read the labeled ionic steps of a DeltaSpin OUTCAR.
 
-    The cells, coordinates, energies, forces and virials come from the regular
-    VASP OUTCAR reader, so both readers accept exactly the same ionic steps.
+    The regular VASP OUTCAR reader supplies the structural labels and the
+    six-component stress fallback. The full Cartesian virial takes precedence
+    when present. Virials are returned in eV.
 
     Parameters
     ----------
@@ -241,9 +257,11 @@ def get_frames(fname, begin=0, step=1, convergence_check=True):
         forces, virials, spins, force_mags)``.
     """
     steps = []
+    full_virials = []
 
     def _observe(step_index, block):
         steps.append(parse_deltaspin_block(block))
+        full_virials.append(_parse_virial(block))
 
     (
         atom_names,
@@ -253,7 +271,7 @@ def get_frames(fname, begin=0, step=1, convergence_check=True):
         coords,
         energies,
         forces,
-        virials,
+        stresses,
     ) = _get_vasp_frames(
         fname,
         begin=begin,
@@ -313,6 +331,20 @@ def get_frames(fname, begin=0, step=1, convergence_check=True):
         for ion, force in observables.magnetic_forces.items():
             all_force_mags[frame, ion - 1] = force
 
+    tensors = [full_virials[index] for index in keep]
+    if any(tensor is None for tensor in tensors) and stresses is not None:
+        if len(stresses) != len(cells):
+            raise ValueError("cannot match six-component stresses to OUTCAR steps")
+        for frame, index in enumerate(keep):
+            if tensors[frame] is None:
+                volume = np.linalg.det(cells[index])
+                tensors[frame] = stresses[index] * (1e3 / 1.602176621e6 * volume)
+    virials = None
+    if any(tensor is not None for tensor in tensors):
+        if any(tensor is None for tensor in tensors):
+            raise ValueError("virials are missing from some DeltaSpin OUTCAR steps")
+        virials = np.stack(tensors)
+
     return (
         atom_names,
         atom_numbs,
@@ -321,7 +353,7 @@ def get_frames(fname, begin=0, step=1, convergence_check=True):
         coords[keep],
         energies[keep],
         forces[keep],
-        None if virials is None else virials[keep],
+        virials,
         all_spins,
         all_force_mags,
     )
