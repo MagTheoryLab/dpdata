@@ -322,7 +322,7 @@ class QuipGapxyzSystems:
         return info_dict
 
 
-def format_single_frame(data, frame_idx):
+def format_single_frame(data, frame_idx, include_magnetic=False):
     """Format a single frame of system data into extended XYZ format lines.
 
     Parameters
@@ -373,6 +373,10 @@ def format_single_frame(data, frame_idx):
 
     # Properties — use "forces" for ASE compatibility (not "force")
     header_parts.append("Properties=species:S:1:pos:R:3:Z:I:1:forces:R:3")
+    if include_magnetic and "spins" in data:
+        header_parts[-1] += ":spin:R:3"
+    if include_magnetic and "force_mags" in data:
+        header_parts[-1] += ":mforce:R:3"
 
     header_line = "    ".join(header_parts)
 
@@ -391,6 +395,14 @@ def format_single_frame(data, frame_idx):
         atomic_number = Element(species).Z
 
         atom_line = f"{species}    {x:.11e}   {y:.11e}   {z:.11e}   {atomic_number}    {fx:.11e}  {fy:.11e}   {fz:.11e}"
+        if include_magnetic and "spins" in data:
+            atom_line += "  " + "  ".join(
+                f"{v:.11e}" for v in data["spins"][frame_idx, i]
+            )
+        if include_magnetic and "force_mags" in data:
+            atom_line += "  " + "  ".join(
+                f"{v:.11e}" for v in data["force_mags"][frame_idx, i]
+            )
         atom_lines.append(atom_line)
 
     # Combine all lines for this frame

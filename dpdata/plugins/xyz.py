@@ -83,7 +83,6 @@ class XYZFormat(Format):
 @Format.register("quip/gap/xyz")
 @Format.register("quip/gap/xyz_file")
 @Format.register("extxyz")
-@Format.register("gpumd/xyz")
 @Format.register("nequip/xyz")
 @Format.register("mace/xyz")
 class QuipGapXYZFormat(Format):
@@ -171,11 +170,16 @@ class QuipGapXYZFormat(Format):
         **kwargs : dict
             additional arguments
         """
+        self._write_labeled_system(data, file_name)
+
+    def _write_labeled_system(self, data, file_name, include_magnetic=False):
         frames = []
         nframes = len(data["energies"])
 
         for frame_idx in range(nframes):
-            frame_lines = format_single_frame(data, frame_idx)
+            frame_lines = format_single_frame(
+                data, frame_idx, include_magnetic=include_magnetic
+            )
             frames.append("\n".join(frame_lines))
 
         content = "\n".join(frames)
@@ -211,3 +215,22 @@ class QuipGapXYZFormat(Format):
             # Just create/truncate the file, then yield file handlers
             for _ in formulas:
                 yield f
+
+
+@Format.register("gpumd/xyz")
+class GPUMDXYZFormat(QuipGapXYZFormat):
+    """GPUMD extended XYZ, including magnetic labels when available."""
+
+    def to_labeled_system(self, data, file_name: FileType, **kwargs):
+        """Write labeled data, including available spin and magnetic-force labels.
+
+        Parameters
+        ----------
+        data : dict
+            Labeled system data.
+        file_name : str or file-like object
+            Output XYZ file.
+        **kwargs : dict
+            Additional arguments accepted for API compatibility.
+        """
+        self._write_labeled_system(data, file_name, include_magnetic=True)

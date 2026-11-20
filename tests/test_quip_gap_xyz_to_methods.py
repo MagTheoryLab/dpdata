@@ -5,6 +5,7 @@ import os
 import tempfile
 import unittest
 
+import numpy as np
 from context import dpdata
 
 
@@ -114,6 +115,33 @@ class TestQuipGapXYZToMethods(unittest.TestCase):
         finally:
             if os.path.exists(output_file):
                 os.unlink(output_file)
+
+    def test_gpumd_xyz_writes_magnetic_labels_only_for_gpumd(self):
+        system = self.system_b1c9[0]
+        system.data["spins"] = np.arange(system.get_natoms() * 3).reshape(
+            1, system.get_natoms(), 3
+        )
+        system.data["force_mags"] = system.data["spins"] + 100
+
+        with tempfile.TemporaryDirectory() as directory:
+            gpumd_path = os.path.join(directory, "gpumd.xyz")
+            extxyz_path = os.path.join(directory, "extxyz.xyz")
+            system.to("gpumd/xyz", gpumd_path)
+            system.to("extxyz", extxyz_path)
+
+            with open(gpumd_path) as fp:
+                gpumd = fp.read()
+            with open(extxyz_path) as fp:
+                extxyz = fp.read()
+
+        self.assertIn("spin:R:3:mforce:R:3", gpumd)
+        self.assertNotIn("spin:R:3", extxyz)
+        rows = gpumd.splitlines()[2:]
+        values = np.array([[float(value) for value in row.split()[8:]] for row in rows])
+        np.testing.assert_allclose(values[:, :3], system.data["spins"][0], atol=1e-11)
+        np.testing.assert_allclose(
+            values[:, 3:], system.data["force_mags"][0], atol=1e-11
+        )
 
 
 if __name__ == "__main__":
