@@ -16,6 +16,7 @@ MOMENT_HEADER = (
 SECOND_MOMENT_ROW = (
     "     2   Fe  1  1  1     -0.3500000098      0.0000000000      2.6770000828      2.6997832229\n"
 )
+ALL_ION_PREAMBLE = " Moments below list all ions in POSCAR order.\n"
 SECOND_FORCE_ROW = (
     "     2   Fe  1  1  1     -0.0072805932      0.0000003982      0.0518628325\n"
 )
@@ -93,6 +94,43 @@ class TestVasp6DeltaSpinOutcar(unittest.TestCase):
 
 
 class TestVasp6DeltaSpinPartialConstraint(unittest.TestCase):
+    def test_all_ion_moment_table_keeps_unconstrained_spin(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = patched_outcar(
+                directory,
+                [
+                    (MOMENT_HEADER, ALL_ION_PREAMBLE + MOMENT_HEADER),
+                    (
+                        SECOND_MOMENT_ROW,
+                        SECOND_MOMENT_ROW.replace("1  1  1", "0  0  0"),
+                    ),
+                    (SECOND_FORCE_ROW, SECOND_FORCE_ROW_UNCONSTRAINED),
+                ],
+            )
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                system = dpdata.LabeledSystem(path, fmt="vasp6_deltaspin/outcar")
+
+        self.assertFalse(any("unconstrained" in str(w.message) for w in caught))
+        np.testing.assert_array_equal(
+            system["spins"][0, 1], [-0.3500000098, 0.0, 2.6770000828]
+        )
+        np.testing.assert_array_equal(system["force_mags"][0, 1], np.zeros(3))
+
+    def test_all_ion_moment_table_rejects_missing_spin(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = patched_outcar(
+                directory,
+                [
+                    (MOMENT_HEADER, ALL_ION_PREAMBLE + MOMENT_HEADER),
+                    (SECOND_MOMENT_ROW, ""),
+                ],
+            )
+            with self.assertRaisesRegex(
+                ValueError, "incomplete all-ion DeltaSpin moment table"
+            ):
+                dpdata.LabeledSystem(path, fmt="vasp6_deltaspin/outcar")
+
     def test_unconstrained_atom_has_no_moment(self):
         with tempfile.TemporaryDirectory() as directory:
             path = patched_outcar(

@@ -4,14 +4,12 @@ The DeltaSpin build of VASP 6 constrains the local moments of selected atoms
 and prints, once per ionic step,
 
 * ``DeltaSpin final status`` with the SCF and moment constraint convergence,
-* ``DeltaSpin final constrained observables`` with the moment of every
-  constrained atom, and
+* ``DeltaSpin final constrained observables`` with the moment of every atom
+  (only constrained atoms in older OUTCARs), and
 * ``Magnetic force (eV/uB)`` with the magnetic force of every atom.
 
-The tables list the moments of constrained atoms only, so atoms that take part
-in the calculation without a moment constraint have no moment label here. The
-constrained components are given per atom by the ``cx cy cz`` mask columns of
-the two tables.
+The ``cx cy cz`` columns mark the constrained components. An atom with
+mask ``0 0 0`` can carry a finite local moment and has zero constraint force.
 """
 
 from __future__ import annotations
@@ -28,6 +26,7 @@ _MOMENT_HEADER = ("ion", "elem", "cx", "cy", "cz", "Mx", "My", "Mz")
 _FORCE_HEADER = ("ion", "elem", "cx", "cy", "cz", "MFx", "MFy", "MFz")
 _OBSERVABLES_TITLE = "DeltaSpin final constrained observables"
 _FORCE_TITLE = "Magnetic force (eV/uB)"
+_ALL_ION_MOMENTS = "Moments below list all ions in POSCAR order."
 _STATUS_TITLE = "DeltaSpin final status"
 _VIRIAL_TITLE = "Virial tensor (eV/cell)"
 
@@ -63,11 +62,14 @@ class DeltaSpinObservables:
     tolerance : float or None
         Requested moment tolerance, in uB.
     moments : dict[int, tuple[float, float, float]]
-        Moment of each constrained atom, keyed by its one-based ion index.
+        Printed moments keyed by one-based ion index, including unconstrained
+        atoms when present.
     masks : dict[int, tuple[int, int, int]]
         ``cx cy cz`` constraint mask of each atom listed in the moment table.
     magnetic_forces : dict[int, tuple[float, float, float]]
         Magnetic force of every atom in the magnetic force table.
+    all_ions_reported : bool
+        Whether the OUTCAR explicitly declares the all-ion moment table.
     """
 
     moment_def: int
@@ -80,6 +82,7 @@ class DeltaSpinObservables:
     magnetic_forces: dict[int, tuple[float, float, float]] = field(
         default_factory=dict
     )
+    all_ions_reported: bool = False
 
 
 def _find_header(lines, header, start=0):
@@ -168,6 +171,8 @@ def parse_deltaspin_block(lines):
     masks = {}
     for fields in _iter_table_rows(lines, moment_header):
         ion = int(fields[0])
+        if ion in moments:
+            raise ValueError(f"duplicate DeltaSpin moment for ion {ion}")
         masks[ion] = tuple(int(value) for value in fields[2:5])
         moments[ion] = tuple(_to_float(value) for value in fields[5:8])
 
@@ -195,6 +200,9 @@ def parse_deltaspin_block(lines):
         moments=moments,
         masks=masks,
         magnetic_forces=magnetic_forces,
+        all_ions_reported=any(
+            _ALL_ION_MOMENTS in line for line in lines[title_index:moment_header]
+        ),
         **_parse_status(lines),
     )
 
@@ -204,15 +212,11 @@ def _check_moments(observables, ntot):
     for ion in list(observables.moments) + list(observables.magnetic_forces):
         if not 1 <= ion <= ntot:
             raise ValueError(
-                f"DeltaSpin observables list ion {ion}, but the OUTCAR has "
-                f"{ntot} atoms"
+                f"DeltaSpin observables list ion {ion}, but the OUTCAR has {ntot} atoms"
             )
+    if observables.all_ions_reported and len(observables.moments) != ntot:
+        raise ValueError("incomplete all-ion DeltaSpin moment table")
     for ion, moment in observables.moments.items():
-        if not any(observables.masks[ion]):
-            warnings.warn(
-                f"DeltaSpin moment table lists unconstrained atom {ion}; its "
-                "moment is not part of the constraint"
-            )
         if not np.isfinite(moment).all():
             raise ValueError(f"DeltaSpin moment of ion {ion} is not finite")
 
