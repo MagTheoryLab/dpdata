@@ -397,11 +397,11 @@ def format_single_frame(data, frame_idx, include_magnetic=False):
         atom_line = f"{species}    {x:.11e}   {y:.11e}   {z:.11e}   {atomic_number}    {fx:.11e}  {fy:.11e}   {fz:.11e}"
         if include_magnetic and "spins" in data:
             atom_line += "  " + "  ".join(
-                f"{v:.11e}" for v in data["spins"][frame_idx, i]
+                f"{v:.17g}" for v in data["spins"][frame_idx, i]
             )
         if include_magnetic and "force_mags" in data:
             atom_line += "  " + "  ".join(
-                f"{v:.11e}" for v in data["force_mags"][frame_idx, i]
+                f"{v:.17g}" for v in data["force_mags"][frame_idx, i]
             )
         atom_lines.append(atom_line)
 

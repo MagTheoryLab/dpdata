@@ -118,10 +118,10 @@ class TestQuipGapXYZToMethods(unittest.TestCase):
 
     def test_gpumd_xyz_writes_magnetic_labels_only_for_gpumd(self):
         system = self.system_b1c9[0]
-        system.data["spins"] = np.arange(system.get_natoms() * 3).reshape(
-            1, system.get_natoms(), 3
+        system.data["spins"] = np.tile(
+            [1.123456789012345, -0.039123456789123, 1e-15], (1, system.get_natoms(), 1)
         )
-        system.data["force_mags"] = system.data["spins"] + 100
+        system.data["force_mags"] = -system.data["spins"]
 
         with tempfile.TemporaryDirectory() as directory:
             gpumd_path = os.path.join(directory, "gpumd.xyz")
@@ -138,10 +138,8 @@ class TestQuipGapXYZToMethods(unittest.TestCase):
         self.assertNotIn("spin:R:3", extxyz)
         rows = gpumd.splitlines()[2:]
         values = np.array([[float(value) for value in row.split()[8:]] for row in rows])
-        np.testing.assert_allclose(values[:, :3], system.data["spins"][0], atol=1e-11)
-        np.testing.assert_allclose(
-            values[:, 3:], system.data["force_mags"][0], atol=1e-11
-        )
+        np.testing.assert_array_equal(values[:, :3], system.data["spins"][0])
+        np.testing.assert_array_equal(values[:, 3:], system.data["force_mags"][0])
 
 
 if __name__ == "__main__":
