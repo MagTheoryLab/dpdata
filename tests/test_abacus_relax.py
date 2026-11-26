@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import os
 import shutil
+import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 from context import dpdata
 
-from dpdata.unit import LengthConversion
+from dpdata.unit import LengthConversion, PressureConversion
 
 bohr2ang = LengthConversion("bohr", "angstrom").value()
 
@@ -83,6 +85,27 @@ class TestABACUSRelaxLabeledOutput(unittest.TestCase):
             ref = np.array(ref)
             ref = ref.reshape([5, 3, 3])
             np.testing.assert_almost_equal(self.system.data["stress"], ref, decimal=5)
+
+    def test_nonsymmetric_virial_preserves_raw_stress(self):
+        fixture = Path("abacus.relax")
+        log = (fixture / "OUT.abacus/running_cell-relax.log.normal").read_text()
+        log = log.replace("-2.153904      -0.330883", "-2.153904      -1.330883", 1)
+        with tempfile.TemporaryDirectory() as directory:
+            case = Path(directory)
+            shutil.copy(fixture / "INPUT", case / "INPUT")
+            shutil.copy(fixture / "STRU.h2o", case / "STRU")
+            output = case / "OUT.abacus"
+            output.mkdir()
+            (output / "running_cell-relax.log").write_text(log)
+            system = dpdata.LabeledSystem(directory, fmt="abacus/relax")
+
+        raw = system["stress"][0]
+        self.assertEqual(raw[0, 1], -1.330883)
+        self.assertEqual(raw[1, 0], -0.330883)
+        scale = PressureConversion("kbar", "eV/angstrom^3").value()
+        expected = raw.T * scale * np.linalg.det(system["cells"][0])
+        np.testing.assert_allclose(system["virials"][0], expected)
+        np.testing.assert_array_equal(system["virials"][1:], self.system["virials"][1:])
 
     def test_energy(self):
         ref_energy = np.array(

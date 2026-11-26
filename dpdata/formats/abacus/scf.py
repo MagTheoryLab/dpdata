@@ -181,16 +181,26 @@ def get_mag_force(outlines):
             magforces.append(magforce)
     return np.array(mags), np.array(magforces)
 
+
 def read_input(path_in):
-    """
-    parse INPUT to dict
-    """
+    """Read ABACUS INPUT parameters."""
     input_dict = {}
-    with open_file(path_in)  as f:
-        groups = re.findall(r"^([A-Za-z_]+)\s+([^\#\n]*)", f.read(), re.MULTILINE)
+    with open_file(path_in) as f:
+        groups = re.findall(
+            r"^[ \t]*([A-Za-z_]+)[ \t]+([^#\n]*)", f.read(), re.MULTILINE
+        )
         for group in groups:
             input_dict[group[0].strip()] = group[1].strip()
     return input_dict
+
+
+def virial_in_dpdata_order(virial, input_dict):
+    """Convert Kohn–Sham virials from displacement-first to position-first."""
+    if input_dict.get("esolver_type", "ksdft").lower() == "ksdft":
+        return virial.swapaxes(-1, -2)
+    return virial
+
+
 def get_frame(fname):
     data = {
         "atom_names": [],
@@ -246,13 +256,14 @@ def get_frame(fname):
 
     force = get_force(outlines, natoms)
     stress = get_stress(outlines)
+    input_dict = read_input(path_in)
     data["energies"] = np.array(energy)[np.newaxis]
     data["forces"] = np.empty((0,)) if force is None else force[np.newaxis, :, :]
     data["orig"] = np.zeros(3)
     if stress is not None:
         cell = data["cells"][0]
         stress *= np.abs(np.linalg.det(cell))
-        data["virials"] = stress[np.newaxis, :, :]
+        data["virials"] = virial_in_dpdata_order(stress, input_dict)[np.newaxis]
 
     if len(magmom) > 0:
         data["spins"] = magmom
@@ -261,7 +272,6 @@ def get_frame(fname):
     if move is not None:
         data["move"] = move
 
-    input_dict = read_input(path_in)
     if "hubbard_u" in input_dict:
         # hubbard_u is given once per atom type, like the LAMMPS aparam list.
         hubbard_u = np.array(input_dict["hubbard_u"].split(), dtype=np.float32)

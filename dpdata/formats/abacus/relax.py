@@ -14,6 +14,8 @@ from .scf import (
     get_geometry_in,
     get_mag_force,
     kbar2evperang3,
+    read_input,
+    virial_in_dpdata_order,
 )
 from .stru import get_frame_from_stru
 
@@ -274,7 +276,7 @@ def get_frame(fname):
     data["energies"] = energy
     data["forces"] = force
     if isinstance(virial, np.ndarray):
-        data["virials"] = virial
+        data["virials"] = virial_in_dpdata_order(virial, read_input(path_in))
     data["stress"] = stress
     data["orig"] = np.zeros(3)
 

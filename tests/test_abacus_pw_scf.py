@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import io
 import os
 import shutil
 import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 from context import dpdata
 
-from dpdata.unit import LengthConversion
+from dpdata.unit import LengthConversion, PressureConversion
 
 bohr2ang = LengthConversion("bohr", "angstrom").value()
 
@@ -122,6 +124,41 @@ class TestABACUSLabeledOutput(unittest.TestCase):
         #     for jj in range(virial.shape[1]) :
         #         self.assertAlmostEqual(self.system_h2o.data['virials'][0][ii][jj], virial[ii][jj], places = 2)
         # fp.close()
+
+    def test_nonsymmetric_stress_to_gpumd(self):
+        fixture = Path("abacus.scf")
+        log = (fixture / "OUT.ch4/running_scf.log").read_text()
+        log = log.replace("+17.95102076    +5.24181029", "+17.95102076    +7.24181029")
+        raw = np.array(
+            [
+                [17.95102076, 7.24181029, -4.35918400],
+                [5.24181029, 13.26034469, 0.17341933],
+                [-4.35918400, 0.17341933, -1.90016343],
+            ]
+        )
+        scale = PressureConversion("kbar", "eV/angstrom^3").value()
+        with tempfile.TemporaryDirectory() as directory:
+            case = Path(directory)
+            shutil.copy(fixture / "STRU.ch4", case / "STRU")
+            output = case / "OUT.ABACUS"
+            output.mkdir()
+            (output / "running_scf.log").write_text(log)
+            for solver, stress in (("ksdft", raw.T), ("nep", raw)):
+                with self.subTest(solver=solver):
+                    (case / "INPUT").write_text(
+                        f"INPUT_PARAMETERS\n  esolver_type {solver}\n"
+                    )
+                    system = dpdata.LabeledSystem(directory, fmt="abacus/scf")
+                    expected = stress * scale * np.linalg.det(system["cells"][0])
+                    np.testing.assert_allclose(system["virials"][0], expected)
+
+                    xyz = io.StringIO()
+                    system.to("gpumd/xyz", xyz)
+                    header = xyz.getvalue().splitlines()[1]
+                    values = header.split('virial="')[1].split('"')[0]
+                    np.testing.assert_allclose(
+                        np.fromstring(values, sep=" "), expected.ravel(), rtol=1e-12
+                    )
 
     def test_energy(self):
         ref_energy = -219.64991404276591
