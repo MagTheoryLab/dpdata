@@ -18,6 +18,7 @@ _ENERGY_KEYS = ("energy", "Energy", "free_energy", "REF_energy", "energies")
 
 # Accepted per-atom property names for forces.
 _FORCE_KEYS = ("force", "forces")
+_MAGNETIC_KEYS = {"spin": "spins", "mforce": "force_mags"}
 
 # Accepted header keys for virial tensor.
 _VIRIAL_KEYS = ("virial", "virials")
@@ -103,7 +104,9 @@ class QuipGapxyzSystems:
                 yield lines
 
     @staticmethod
-    def handle_single_xyz_frame(lines, stress_sign=-1, **kwargs):
+    def handle_single_xyz_frame(
+        lines, stress_sign=-1, *, read_magnetic=False, **kwargs
+    ):
         """Parse a single extended XYZ frame.
 
         Parameters
@@ -153,6 +156,7 @@ class QuipGapxyzSystems:
         coords_array = None
         Z_array = None
         force_array = None
+        magnetic_labels = {}
         for kv_dict in prop_list:
             field_length = int(kv_dict["value"])
             key = kv_dict["key"]
@@ -188,6 +192,15 @@ class QuipGapxyzSystems:
                         f"datatype for {key} must be 'R' instead of {kv_dict['datatype']}"
                     )
                 force_array = data_array[:, used_colomn : used_colomn + field_length]
+                used_colomn += field_length
+            elif read_magnetic and key in _MAGNETIC_KEYS:
+                if kv_dict["datatype"] != "R" or field_length != 3:
+                    raise ValueError(f"expected {key}:R:3 in GPUMD XYZ")
+                values = data_array[:, used_colomn : used_colomn + field_length]
+                labels = np.array([values], dtype=np.float64)
+                if not np.isfinite(labels).all():
+                    raise ValueError(f"non-finite {key} in GPUMD XYZ")
+                magnetic_labels[_MAGNETIC_KEYS[key]] = labels
                 used_colomn += field_length
             else:
                 # Skip unknown per-atom properties (e.g. magmom, charges,
@@ -318,6 +331,7 @@ class QuipGapxyzSystems:
         info_dict["forces"] = np.array([force_array], dtype=np.float64) * f_factor
         if virials is not None:
             info_dict["virials"] = virials
+        info_dict.update(magnetic_labels)
         info_dict["orig"] = np.zeros(3)
         return info_dict
 

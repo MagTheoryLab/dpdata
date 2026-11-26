@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from dpdata.utils import FileType
 from dpdata.formats.xyz.quip_gap_xyz import QuipGapxyzSystems, format_single_frame
 from dpdata.formats.xyz.xyz import coord_to_xyz, xyz_to_coord
+from dpdata.plugins.mag_data import register_mag_data
 
 
 @Format.register("xyz")
@@ -102,6 +103,8 @@ class QuipGapXYZFormat(Format):
     ``nequip/xyz``, and ``gpumd/xyz`` share this implementation.
     """
 
+    _read_magnetic = False
+
     def from_labeled_system(self, data, **kwargs):
         """Load the first labeled frame from an extended XYZ source.
 
@@ -124,15 +127,13 @@ class QuipGapXYZFormat(Format):
         dict
             Labeled data for the first frame.
         """
-        # When called via from_multi_systems iteration, data is already
-        # a parsed info_dict — return as-is.
-        if isinstance(data, dict):
-            return data
-        # When called directly with a filename, read the first frame.
-        file_name = data
-        for frame in QuipGapxyzSystems(file_name, **kwargs):
-            return frame
-        raise RuntimeError(f"No frames found in {file_name}")
+        if not isinstance(data, dict):
+            frame = next(iter(self.from_multi_systems(data, **kwargs)), None)
+            if frame is None:
+                raise RuntimeError(f"No frames found in {data}")
+            data = frame
+        register_mag_data(data)
+        return data
 
     def from_multi_systems(self, file_name, **kwargs):
         """Iterate over all frames and formulas in an extended XYZ file.
@@ -155,7 +156,7 @@ class QuipGapXYZFormat(Format):
         collections.abc.Iterable[dict]
             Parsed labeled frame dictionaries.
         """
-        # here directory is the file_name
+        kwargs["read_magnetic"] = self._read_magnetic
         return QuipGapxyzSystems(file_name, **kwargs)
 
     def to_labeled_system(self, data, file_name: FileType, **kwargs):
@@ -220,6 +221,8 @@ class QuipGapXYZFormat(Format):
 @Format.register("gpumd/xyz")
 class GPUMDXYZFormat(QuipGapXYZFormat):
     """GPUMD extended XYZ, including magnetic labels when available."""
+
+    _read_magnetic = True
 
     def to_labeled_system(self, data, file_name: FileType, **kwargs):
         """Write labeled data, including available spin and magnetic-force labels.

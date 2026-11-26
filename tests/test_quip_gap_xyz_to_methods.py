@@ -130,6 +130,8 @@ class TestQuipGapXYZToMethods(unittest.TestCase):
             extxyz_path = os.path.join(directory, "extxyz.xyz")
             system.to("gpumd/xyz", gpumd_path)
             system.to("extxyz", extxyz_path)
+            single = dpdata.LabeledSystem(gpumd_path, fmt="gpumd/xyz")
+            multi = dpdata.MultiSystems.from_file(gpumd_path, fmt="gpumd/xyz")
 
             with open(gpumd_path) as fp:
                 gpumd = fp.read()
@@ -147,6 +149,9 @@ class TestQuipGapXYZToMethods(unittest.TestCase):
         values = np.array([[float(value) for value in row.split()[8:]] for row in rows])
         np.testing.assert_array_equal(values[:, :3], system.data["spins"][0])
         np.testing.assert_array_equal(values[:, 3:], system.data["force_mags"][0])
+        for reloaded in (single, next(iter(multi.systems.values()))):
+            for key in ("spins", "force_mags", "virials"):
+                np.testing.assert_array_equal(reloaded[key], system[key])
 
 
 if __name__ == "__main__":
