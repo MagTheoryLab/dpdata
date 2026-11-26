@@ -222,7 +222,7 @@ def _check_moments(observables, ntot):
 
 
 def _parse_virial(lines):
-    """Read the full Cartesian virial in eV when the step provides it."""
+    """Read the full Cartesian virial in eV, in the same convention as vasprun.xml."""
     for idx, line in enumerate(lines):
         if line.strip() == _VIRIAL_TITLE:
             rows = [row.split() for row in lines[idx + 3 : idx + 6]]
@@ -231,7 +231,8 @@ def _parse_virial(lines):
             tensor = np.array([[_to_float(value) for value in row[1:]] for row in rows])
             if not np.isfinite(tensor).all():
                 raise ValueError(f"non-finite value in '{_VIRIAL_TITLE}' table")
-            return tensor
+            # OUTCAR indexes the displacement direction first; GPUMD indexes position first.
+            return tensor.T
     return None
 
 

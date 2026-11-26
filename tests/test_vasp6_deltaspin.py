@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import os
 import tempfile
 import unittest
@@ -334,15 +335,23 @@ class TestVasp6DeltaSpinRelax(unittest.TestCase):
             )
             system = dpdata.LabeledSystem(path, fmt="vasp6_deltaspin/outcar")
 
-        np.testing.assert_array_equal(
-            system["virials"][0],
+        expected = np.array(
             [
-                [224.683794235293135, 0.001300274837711, -0.002709951633648],
-                [0.001308828306185, 227.061393271659199, -0.000557031115406],
-                [-0.002704551330098, -0.000558405783358, 227.065333929952885],
-            ],
+                [224.683794235293135, 0.001308828306185, -0.002704551330098],
+                [0.001300274837711, 227.061393271659199, -0.000558405783358],
+                [-0.002709951633648, -0.000557031115406, 227.065333929952885],
+            ]
         )
+        np.testing.assert_array_equal(system["virials"][0], expected)
         np.testing.assert_array_equal(system["virials"][1], self.system["virials"][1])
+
+        xyz = io.StringIO()
+        system.to("gpumd/xyz", xyz)
+        header = xyz.getvalue().splitlines()[1]
+        values = header.split('virial="')[1].split('"')[0]
+        np.testing.assert_allclose(
+            np.fromstring(values, sep=" "), expected.ravel(), rtol=1e-12, atol=0
+        )
 
 
 if __name__ == "__main__":
