@@ -339,6 +339,8 @@ def format_single_frame(data, frame_idx, include_magnetic=False):
     """
     # Number of atoms
     natoms = len(data["atom_types"])
+    has_spin = include_magnetic and "spins" in data
+    cell = data["cells"][frame_idx]
 
     # Build header line with metadata
     header_parts = []
@@ -352,16 +354,15 @@ def format_single_frame(data, frame_idx, include_magnetic=False):
         virial = data["virials"][frame_idx]
         virial_str = "    ".join(f"{v:.12e}" for v in virial.flatten())
         header_parts.append(f'virial="{virial_str}"')
-        # Also write stress for ASE compatibility: stress = -virial / volume
-        cell = data["cells"][frame_idx]
-        volume = abs(np.linalg.det(cell))
-        if volume > 0:
-            stress = -virial / volume
-            stress_str = "    ".join(f"{s:.12e}" for s in stress.flatten())
-            header_parts.append(f'stress="{stress_str}"')
+        # NEP-Spin rejects stress, including when a virial is present.
+        if not has_spin:
+            volume = abs(np.linalg.det(cell))
+            if volume > 0:
+                stress = -virial / volume
+                stress_str = "    ".join(f"{s:.12e}" for s in stress.flatten())
+                header_parts.append(f'stress="{stress_str}"')
 
     # Lattice
-    cell = data["cells"][frame_idx]
     lattice_str = "   ".join(f"{c:.12e}" for c in cell.flatten())
     header_parts.append(f'Lattice="{lattice_str}"')
 
@@ -373,7 +374,7 @@ def format_single_frame(data, frame_idx, include_magnetic=False):
 
     # Properties — use "forces" for ASE compatibility (not "force")
     header_parts.append("Properties=species:S:1:pos:R:3:Z:I:1:forces:R:3")
-    if include_magnetic and "spins" in data:
+    if has_spin:
         header_parts[-1] += ":spin:R:3"
     if include_magnetic and "force_mags" in data:
         header_parts[-1] += ":mforce:R:3"
@@ -395,7 +396,7 @@ def format_single_frame(data, frame_idx, include_magnetic=False):
         atomic_number = Element(species).Z
 
         atom_line = f"{species}    {x:.11e}   {y:.11e}   {z:.11e}   {atomic_number}    {fx:.11e}  {fy:.11e}   {fz:.11e}"
-        if include_magnetic and "spins" in data:
+        if has_spin:
             atom_line += "  " + "  ".join(
                 f"{v:.17g}" for v in data["spins"][frame_idx, i]
             )

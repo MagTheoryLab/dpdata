@@ -122,6 +122,8 @@ class TestQuipGapXYZToMethods(unittest.TestCase):
             [1.123456789012345, -0.039123456789123, 1e-15], (1, system.get_natoms(), 1)
         )
         system.data["force_mags"] = -system.data["spins"]
+        virial = np.arange(1, 10, dtype=float).reshape(3, 3)
+        system.data["virials"] = virial[np.newaxis]
 
         with tempfile.TemporaryDirectory() as directory:
             gpumd_path = os.path.join(directory, "gpumd.xyz")
@@ -136,6 +138,11 @@ class TestQuipGapXYZToMethods(unittest.TestCase):
 
         self.assertIn("spin:R:3:mforce:R:3", gpumd)
         self.assertNotIn("spin:R:3", extxyz)
+        self.assertNotIn('stress="', gpumd)
+        self.assertIn('stress="', extxyz)
+        header = gpumd.splitlines()[1]
+        tensor = header.split('virial="', 1)[1].split('"')[0]
+        np.testing.assert_array_equal(np.fromstring(tensor, sep=" "), virial.ravel())
         rows = gpumd.splitlines()[2:]
         values = np.array([[float(value) for value in row.split()[8:]] for row in rows])
         np.testing.assert_array_equal(values[:, :3], system.data["spins"][0])
