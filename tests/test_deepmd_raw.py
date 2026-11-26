@@ -3,10 +3,46 @@ from __future__ import annotations
 import os
 import shutil
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import numpy as np
 from comp_sys import CompLabeledSys, CompSys, IsPBC
 from context import dpdata
+
+
+class TestGPUMDToDeepMDVirial(unittest.TestCase):
+    def test_nonsymmetric_tensor_in_both_directions(self):
+        gpumd = np.arange(1.0, 10.0).reshape(3, 3)
+        expected = [1, 4, 7, 2, 5, 8, 3, 6, 9]
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            xyz = root / "train.xyz"
+            xyz.write_text(
+                '1\nLattice="3 0 0 0 3 0 0 0 3" energy=-1 '
+                'virial="1 2 3 4 5 6 7 8 9" '
+                "Properties=species:S:1:pos:R:3:force:R:3:spin:R:3:mforce:R:3\n"
+                "Fe 0 0 0 1 2 3 0 0 2 4 5 6\n"
+            )
+            source = dpdata.MultiSystems.from_file(xyz, fmt="gpumd/xyz")
+            for fmt in ("deepmd/raw", "deepmd/npy", "deepmd/npy/mixed"):
+                with self.subTest(fmt=fmt):
+                    target = root / fmt
+                    source.to(fmt, str(target))
+                    if fmt == "deepmd/raw":
+                        stored = np.loadtxt(next(target.glob("*/virial.raw")))
+                    else:
+                        stored = np.load(next(target.glob("*/set.000/virial.npy")))
+                    np.testing.assert_array_equal(stored.ravel(), expected)
+                    np.testing.assert_array_equal(source[0]["virials"][0], gpumd)
+                    restored = dpdata.MultiSystems.from_file(str(target), fmt=fmt)
+                    np.testing.assert_array_equal(restored[0]["virials"][0], gpumd)
+                    np.testing.assert_array_equal(
+                        restored[0]["spins"], source[0]["spins"]
+                    )
+                    np.testing.assert_array_equal(
+                        restored[0]["force_mags"], source[0]["force_mags"]
+                    )
 
 
 class TestDeepmdLoadRaw(unittest.TestCase, CompLabeledSys, IsPBC):

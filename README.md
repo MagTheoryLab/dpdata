@@ -68,6 +68,14 @@ dpdata OUTCAR -i vasp/outcar -o deepmd/npy -O deepmd_data
 
 See the complete [command-line reference][cli] for input/output options.
 
+For GPUMD training XYZ, select `-i gpumd/xyz`. GPUMD and DeePMD both store
+the nine virial components in row order (`xx xy xz yx yy yz zx zy zz`).
+Their tensor indices are reversed. dpdata transposes the virial on reading
+and writing `deepmd/raw`, `deepmd/npy`, and `deepmd/npy/mixed` so it
+can convert directly between these formats and GPUMD XYZ. Regenerate older
+DeePMD datasets exported directly from GPUMD XYZ if their virials are
+non-symmetric and were written without this transpose.
+
 ### Build a labeled dataset in Python
 
 ```python

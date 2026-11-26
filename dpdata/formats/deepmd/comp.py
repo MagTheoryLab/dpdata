@@ -11,6 +11,7 @@ import dpdata
 from dpdata.data_type import is_fully_known_shape
 from dpdata.utils import open_file
 
+from . import transpose_virials
 from .raw import load_type
 
 
@@ -101,10 +102,11 @@ def to_system_data(folder, type_map=None, labels=True):
                 all_data.append(np.reshape(tmp, [tmp.shape[0], *shape]))
         if len(all_data) > 0:
             data[dtype.name] = np.concatenate(all_data, axis=0)
-    return data
+    return transpose_virials(data)
 
 
 def dump(folder, data, set_size=5000, comp_prec=np.float32, remove_sets=True):
+    data = transpose_virials(data)
     os.makedirs(folder, exist_ok=True)
     sets = sorted(glob.glob(os.path.join(folder, "set.*")))
     if len(sets) > 0:

@@ -9,6 +9,8 @@ import dpdata
 from dpdata.data_type import is_fully_known_shape
 from dpdata.utils import open_file
 
+from . import transpose_virials
+
 
 def load_type(folder, type_map=None):
     data = {}
@@ -95,12 +97,13 @@ def to_system_data(folder, type_map=None, labels=True):
                     )
                 else:
                     data[dtype.name] = np.reshape(tmp, [nframes, *shape])
-        return data
+        return transpose_virials(data)
     else:
         raise RuntimeError("not dir " + folder)
 
 
 def dump(folder, data):
+    data = transpose_virials(data)
     os.makedirs(folder, exist_ok=True)
     nframes = data["cells"].shape[0]
     np.savetxt(os.path.join(folder, "type.raw"), data["atom_types"], fmt="%d")
